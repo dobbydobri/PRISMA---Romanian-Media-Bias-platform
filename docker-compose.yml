@@ -1,0 +1,297 @@
+# --- The Blueprint for all Python Containers ---
+x-scraper-env: &scraper-env
+  build: ./Prisma/scraper
+  depends_on:
+    - postgres_db
+  volumes:
+    - ./Prisma/scraper:/app
+  restart: unless-stopped
+  mem_limit: 512m
+  env_file:
+    - .env
+
+services:
+  # --- The Database ---
+  postgres_db:
+    image: pgvector/pgvector:pg16
+    container_name: prisma_postgres
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    mem_limit: 4g
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d media_bias_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --- The Discoverers ---
+  disc_ziare:
+    <<: *scraper-env
+    container_name: disc_ziare
+    command: python discoverer.py
+    environment: { DB_HOST: postgres_db, OUTLET_ID: 1 }
+
+  disc_desteptarea:
+    <<: *scraper-env
+    container_name: disc_desteptarea
+    command: python discoverer.py
+    environment: { DB_HOST: postgres_db, OUTLET_ID: 2 }
+
+  disc_factual:
+    <<: *scraper-env
+    container_name: disc_factual
+    command: python discoverer.py
+    environment: { DB_HOST: postgres_db, OUTLET_ID: 3 }
+
+  disc_pressone:
+    <<: *scraper-env
+    container_name: disc_pressone
+    command: python discoverer.py
+    environment: { DB_HOST: postgres_db, OUTLET_ID: 4 }
+
+  disc_agerpres:
+    <<: *scraper-env
+    container_name: disc_agerpres
+    command: python discoverer.py
+    environment: { DB_HOST: postgres_db, OUTLET_ID: 5 }
+
+  disc_veridica:
+    <<: *scraper-env
+    container_name: disc_veridica
+    command: python discoverer.py
+    environment: { DB_HOST: postgres_db, OUTLET_ID: 6 }
+
+  disc_gds:
+    <<: *scraper-env
+    container_name: disc_gds
+    command: python discoverer.py
+    environment:
+      - DB_HOST=postgres_db
+      - OUTLET_ID=7
+
+  disc_argesul:
+    <<: *scraper-env
+    container_name: disc_argesul
+    command: python discoverer.py
+    environment:
+      - DB_HOST=postgres_db
+      - OUTLET_ID=8
+
+  disc_buletin:
+    <<: *scraper-env
+    container_name: disc_buletin
+    command: python discoverer.py
+    environment:
+      - DB_HOST=postgres_db
+      - OUTLET_ID=9
+
+  disc_arad24:
+    <<: *scraper-env
+    container_name: disc_arad24
+    command: python discoverer.py
+    environment:
+      - DB_HOST=postgres_db
+      - OUTLET_ID=10
+
+  disc_defapt:
+    <<: *scraper-env
+    container_name: disc_defapt
+    command: python discoverer.py
+    environment:
+      - DB_HOST=postgres_db
+      - OUTLET_ID=11
+
+  disc_monitorul:
+    <<: *scraper-env
+    container_name: disc_monitorul
+    command: python discoverer.py
+    environment:
+      - DB_HOST=postgres_db
+      - OUTLET_ID=12
+
+  # --- The Workers ---
+  work_ziare:
+    <<: *scraper-env
+    container_name: work_ziare
+    command: python worker.py
+    environment: { DB_HOST: postgres_db, OUTLET_ID: 1 }
+
+  work_desteptarea:
+    <<: *scraper-env
+    container_name: work_desteptarea
+    command: python worker.py
+    environment: { DB_HOST: postgres_db, OUTLET_ID: 2 }
+
+  work_factual:
+    <<: *scraper-env
+    container_name: work_factual
+    command: python worker.py
+    environment: { DB_HOST: postgres_db, OUTLET_ID: 3 }
+
+  work_pressone:
+    <<: *scraper-env
+    container_name: work_pressone
+    command: python worker.py
+    environment: { DB_HOST: postgres_db, OUTLET_ID: 4 }
+
+  work_agerpres:
+    <<: *scraper-env
+    container_name: work_agerpres
+    command: python worker.py
+    environment: { DB_HOST: postgres_db, OUTLET_ID: 5 }
+
+  work_veridica:
+    <<: *scraper-env
+    container_name: work_veridica
+    command: python worker.py
+    environment: { DB_HOST: postgres_db, OUTLET_ID: 6 }
+
+  work_gds:
+    <<: *scraper-env
+    container_name: work_gds
+    command: python worker.py
+    environment:
+      - DB_HOST=postgres_db
+      - OUTLET_ID=7
+
+  work_argesul:
+    <<: *scraper-env
+    container_name: work_argesul
+    command: python worker.py
+    environment:
+      - DB_HOST=postgres_db
+      - OUTLET_ID=8
+
+  work_buletin:
+    <<: *scraper-env
+    container_name: work_buletin
+    command: python worker.py
+    environment:
+      - DB_HOST=postgres_db
+      - OUTLET_ID=9
+
+  work_arad24:
+    <<: *scraper-env
+    container_name: work_arad24
+    command: python worker.py
+    environment:
+      - DB_HOST=postgres_db
+      - OUTLET_ID=10
+
+  work_defapt:
+    <<: *scraper-env
+    container_name: work_defapt
+    command: python worker.py
+    environment:
+      - DB_HOST=postgres_db
+      - OUTLET_ID=11
+
+  work_monitorul:
+    <<: *scraper-env
+    container_name: work_monitorul
+    command: python worker.py
+    environment:
+      - DB_HOST=postgres_db
+      - OUTLET_ID=12
+
+  # --- The 3-Hour Cron Injector ---
+  cron_injector:
+    <<: *scraper-env
+    container_name: cron_injector
+    command: python -u cron_injector.py
+    environment:
+      - DB_HOST=postgres_db
+
+  full_text_ner:
+    build: ./Prisma/graph
+    container_name: full_text_ner
+    command: python full_text_ner.py
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@postgres_db:5432/${DB_NAME}
+      - NER_BATCH_SIZE=200
+      - NER_SPACY_BATCH=8
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+    volumes:
+      - ./Prisma/graph:/app
+      - ./Prisma/shared:/app/shared
+    mem_limit: 4g
+    restart: always
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # --- The AI Embedder Service ---
+  embedder_service:
+    build: ./Prisma/embedder
+    container_name: embedder_gpu
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@postgres_db:5432/${DB_NAME}
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+    volumes:
+      - ./Prisma/embedder:/app
+      - ./Prisma/shared:/app/shared
+      - hf_cache:/root/.cache/huggingface
+    mem_limit: 4g
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # --- The Search Query Embedder ---
+  query_embedder:
+    build: ./Prisma/search
+    container_name: prisma_query_embedder
+    environment:
+      - EMBED_MODEL=intfloat/multilingual-e5-large
+      - EMBED_FP16=1
+      - EMBED_DEVICE=cuda
+      - MAX_QUERY_CHARS=512
+      - LOG_LEVEL=INFO
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./Prisma/search:/app
+      - hf_cache:/root/.cache/huggingface
+    mem_limit: 4g
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+volumes:
+  pgdata:
+    name: prisma_pgdata
+    external: true
+  hf_cache:
+    name: prisma_hf_cache
+    external: true

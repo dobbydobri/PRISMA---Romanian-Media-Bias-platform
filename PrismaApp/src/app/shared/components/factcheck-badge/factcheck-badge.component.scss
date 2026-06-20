@@ -1,0 +1,115 @@
+@use '../../../../app/styles/design-tokens' as *;
+
+// ── Orange midpoint (matches the tab component's orange tier) ────────
+$color-orange: #EA580C;
+$color-orange-subtle: #FED7AA;
+
+// ── Badge container ───────────────────────────────────────────────────
+
+.factcheck-badge {
+  border-left: 4px solid;
+  border-radius: $radius-sm;
+  padding: $space-3 $space-4;
+  margin-bottom: $space-4;
+  background: $color-bg-surface;
+  box-shadow: $shadow-card-rest;
+
+  &--tier1 { border-color: $color-success; }
+  &--tier2 { border-color: $color-warning; }
+}
+
+// ── Header row ────────────────────────────────────────────────────────
+
+.factcheck-badge__header {
+  display: flex;
+  align-items: center;
+  gap: $space-2;
+}
+
+.factcheck-badge__icon {
+  flex-shrink: 0;
+
+  &--tier1 { color: $color-success; }
+  &--tier2 { color: $color-warning; }
+}
+
+.factcheck-badge__label {
+  font-size: $font-size-body;
+  font-weight: $weight-semibold;
+  color: $color-text-primary;
+  flex: 1;
+}
+
+.factcheck-badge__toggle {
+  margin-left: auto;
+  font-size: $font-size-small;
+  color: $color-text-secondary;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+// ── Details panel ─────────────────────────────────────────────────────
+
+.factcheck-badge__details {
+  margin-top: $space-3;
+  padding-top: $space-3;
+  border-top: 1px solid $color-border-subtle;
+  display: flex;
+  flex-direction: column;
+  gap: $space-2;
+}
+
+// ── Individual fact-check row ──────────────────────────────────────────
+
+.factcheck-badge__item {
+  display: flex;
+  align-items: center;
+  gap: $space-2;
+  flex-wrap: wrap;
+}
+
+.factcheck-badge__item-meta {
+  font-size: $font-size-small;
+  color: $color-text-secondary;
+}
+
+.factcheck-badge__item-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: $font-size-small;
+  font-weight: $weight-medium;
+  color: $color-brand-primary;
+  text-decoration: none;
+  transition: color $transition-fast;
+  margin-left: auto;
+
+  &:hover {
+    color: $color-brand-hover;
+    text-decoration: underline;
+  }
+}
+
+.factcheck-badge__item-link-icon {
+  font-size: 14px;
+  width: 14px;
+  height: 14px;
+}
+
+.verdict-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: $font-size-tiny;
+  font-weight: $weight-semibold;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  line-height: 1.6;
+
+  &--green  { background: $color-success-subtle; color: $color-success; }
+  &--amber  { background: $color-warning-subtle; color: $color-warning; }
+  &--orange { background: $color-orange-subtle;  color: $color-orange;  }
+  &--red    { background: $color-error-subtle;   color: $color-error;   }
+}

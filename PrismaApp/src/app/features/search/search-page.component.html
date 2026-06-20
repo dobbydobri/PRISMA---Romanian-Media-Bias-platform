@@ -1,0 +1,187 @@
+<div class="search-page">
+
+  
+  <div class="search-page__bar-area">
+
+    <mat-form-field appearance="outline" class="search-page__input" id="search-field">
+      <mat-label>Caută articole...</mat-label>
+      <mat-icon matPrefix>search</mat-icon>
+      <input
+        matInput
+        id="search-input"
+        [value]="query"
+        (input)="query = $any($event.target).value"
+        (keyup.enter)="onSearch()"
+        autocomplete="off"
+        aria-label="Introduceți termenul de căutare"
+      />
+      <button
+        mat-icon-button
+        matSuffix
+        id="search-button"
+        (click)="onSearch()"
+        [disabled]="loading()"
+        aria-label="Caută"
+      >
+        <mat-icon>arrow_forward</mat-icon>
+      </button>
+    </mat-form-field>
+
+    
+    <div class="search-page__filter-toggle-row">
+      <button
+        mat-button
+        id="filter-toggle-button"
+        class="search-page__filter-toggle"
+        (click)="toggleFilters()"
+        [class.search-page__filter-toggle--active]="filtersExpanded()"
+        aria-label="Afișează sau ascunde filtrele"
+      >
+        <mat-icon>tune</mat-icon>
+        Filtre
+        @if (activeFilterCount() > 0) {
+          <span class="filter-badge">{{ activeFilterCount() }}</span>
+        }
+      </button>
+
+      @if (activeFilterCount() > 0) {
+        <button
+          mat-button
+          class="search-page__clear-filters"
+          (click)="clearFilters()"
+          aria-label="Șterge toate filtrele"
+        >
+          <mat-icon>close</mat-icon>
+          Șterge filtrele
+        </button>
+      }
+    </div>
+
+    
+    @if (filtersExpanded()) {
+      <div class="search-page__filters" id="filter-panel" aria-label="Panoul de filtre">
+
+        
+        <mat-form-field appearance="outline" class="search-page__filter-field">
+          <mat-label>Surse</mat-label>
+          <mat-select
+            id="outlet-select"
+            multiple
+            [(ngModel)]="selectedOutletIds"
+            aria-label="Filtrează după surse"
+          >
+            @for (outlet of outlets; track outlet.id) {
+              <mat-option [value]="outlet.id">{{ outlet.name }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+
+        
+        <mat-form-field appearance="outline" class="search-page__filter-field">
+          <mat-label>De la</mat-label>
+          <input
+            matInput
+            id="date-from-input"
+            [matDatepicker]="pickerFrom"
+            [(ngModel)]="dateFrom"
+            aria-label="Data de început"
+          />
+          <mat-datepicker-toggle matIconSuffix [for]="pickerFrom"></mat-datepicker-toggle>
+          <mat-datepicker #pickerFrom></mat-datepicker>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" class="search-page__filter-field">
+          <mat-label>Până la</mat-label>
+          <input
+            matInput
+            id="date-to-input"
+            [matDatepicker]="pickerTo"
+            [(ngModel)]="dateTo"
+            aria-label="Data de sfârșit"
+          />
+          <mat-datepicker-toggle matIconSuffix [for]="pickerTo"></mat-datepicker-toggle>
+          <mat-datepicker #pickerTo></mat-datepicker>
+        </mat-form-field>
+
+        
+        <div class="search-page__toggle-row">
+          <mat-slide-toggle
+            id="fact-check-toggle"
+            [(ngModel)]="isFactCheck"
+            aria-label="Afișează doar articole fact-check"
+          >
+            Doar fact-check
+          </mat-slide-toggle>
+        </div>
+
+      </div>
+    }
+  </div>
+
+  
+  @if (loading()) {
+    <mat-progress-bar
+      mode="indeterminate"
+      class="search-page__progress"
+      aria-label="Se caută..."
+    ></mat-progress-bar>
+  }
+
+  
+  @if (hasSearched() && !loading()) {
+    <div class="search-page__results">
+
+      
+      @if (confidence()?.tier === 'MEDIUM') {
+        <div class="confidence-banner confidence-banner--medium" role="status" aria-live="polite">
+          <mat-icon class="confidence-banner__icon">info</mat-icon>
+          <span>Rezultate asociate căutării tale</span>
+        </div>
+      }
+      @if (confidence()?.tier === 'LOW') {
+        <div class="confidence-banner confidence-banner--low" role="status" aria-live="polite">
+          <mat-icon class="confidence-banner__icon">warning</mat-icon>
+          <span>Nu au fost găsite rezultate directe. Se afișează articole similare.</span>
+        </div>
+      }
+
+      
+      @if (!error() && hasResults()) {
+        <p class="search-page__count" aria-live="polite">
+          {{ resultCount() }} rezultate pentru <em>«{{ result()?.query }}»</em>
+        </p>
+      }
+
+      
+      @if (error()) {
+        <app-empty-state
+          icon="error_outline"
+          title="A apărut o eroare"
+          [description]="error()!"
+          [showRetry]="true"
+          (retry)="onRetry()"
+        ></app-empty-state>
+      }
+
+      
+      @if (!error() && !hasResults()) {
+        <app-empty-state
+          icon="search_off"
+          title="Niciun rezultat"
+          description="Încearcă o altă căutare sau modifică filtrele."
+        ></app-empty-state>
+      }
+
+      
+      @if (!error() && hasResults()) {
+        <div class="search-page__list">
+          @for (article of articles(); track article.id) {
+            <app-search-result-card [article]="article"></app-search-result-card>
+          }
+        </div>
+      }
+
+    </div>
+  }
+
+</div>

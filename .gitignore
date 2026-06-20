@@ -1,0 +1,35 @@
+# Secrets
+.env
+
+# Local archives
+Prisma_comments_archive.md
+coordinator.pid
+coordinator.log
+
+# Python
+Prisma/**/venv/
+Prisma/**/__pycache__/
+Prisma/**/*.pyc
+Prisma/**/*.log
+Prisma/analysis/models/
+Prisma/analysis/transformer_model/
+
+# .NET
+PrismaAPI/**/bin/
+PrismaAPI/**/obj/
+PrismaAPI/appsettings.Development.json
+PrismaAPI/PrismaAPI/appsettings.Development.json
+
+# Angular
+PrismaApp/.angular/
+PrismaApp/node_modules/
+PrismaApp/dist/
+PrismaApp/.vscode/
+PrismaApp/out-tsc/
+
+# pgAdmin
+pgadmin_snippets.sql
+
+#claude
+.claudeignore
+CLAUDE.md

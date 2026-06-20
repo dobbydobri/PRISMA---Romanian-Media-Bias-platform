@@ -1,0 +1,41 @@
+@use '../../../app/styles/design-tokens' as *;
+
+.explore-page {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: $space-10 $space-6 $space-16;
+
+  // ── Page header — mirrors topics-page header style ───────────────
+
+  &__header {
+    margin-bottom: $space-8;
+  }
+
+  &__title {
+    font-size: $font-size-h1;
+    font-weight: $weight-semibold;
+    color: $color-text-primary;
+    letter-spacing: -0.02em;
+    margin-bottom: $space-2;
+  }
+
+  &__subtitle {
+    font-size: $font-size-body;
+    color: $color-text-secondary;
+    line-height: $line-height-relaxed;
+    margin-bottom: 0;
+  }
+
+  // ── Tab group ────────────────────────────────────────────────────
+
+  &__tabs {
+    --mat-tab-header-active-indicator-color: #{$color-brand-primary};
+    --mat-tab-header-active-label-text-color: #{$color-brand-primary};
+    --mat-tab-header-active-focus-label-text-color: #{$color-brand-primary};
+    --mat-tab-header-active-hover-label-text-color: #{$color-brand-primary};
+  }
+
+  &__tab-content {
+    padding-top: $space-6;
+  }
+}

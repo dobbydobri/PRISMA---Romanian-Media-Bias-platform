@@ -1,0 +1,6 @@
+psycopg2-binary
+pgvector
+numpy
+scikit-learn
+umap-learn
+tqdm

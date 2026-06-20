@@ -1,0 +1,82 @@
+<div class="topics-page">
+
+  
+  <div class="topics-page__header">
+    <h1 class="topics-page__title">Cele mai acoperite subiecte</h1>
+    <p class="topics-page__subtitle">
+      Subiectele clasificate după volumul acoperirii și numărul de surse implicate.
+    </p>
+
+    
+    <div class="topics-page__filters" aria-label="Filtre (dezactivate în această versiune)">
+      <mat-form-field appearance="outline" class="topics-page__filter-field">
+        <mat-label>Perioadă</mat-label>
+        <mat-select [disabled]="true" value="7d">
+          <mat-option value="7d">Ultimele 7 zile</mat-option>
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="topics-page__filter-field">
+        <mat-label>Sortare</mat-label>
+        <mat-select [disabled]="true" value="articleCount">
+          <mat-option value="articleCount">Articole</mat-option>
+        </mat-select>
+      </mat-form-field>
+    </div>
+  </div>
+
+  
+  @if (loading()) {
+    <div class="topics-page__grid" aria-label="Se încarcă subiectele..." aria-busy="true">
+      @for (skeleton of skeletons; track $index) {
+        <app-topic-card-skeleton></app-topic-card-skeleton>
+      }
+    </div>
+  }
+
+  
+  @if (!loading() && error()) {
+    <app-empty-state
+      icon="error_outline"
+      title="A apărut o eroare"
+      [description]="error()!"
+      [showRetry]="true"
+      (retry)="fetchClusters()"
+    ></app-empty-state>
+  }
+
+  
+  @if (!loading() && !error() && !hasData()) {
+    <app-empty-state
+      icon="search_off"
+      title="Niciun subiect găsit"
+      description="Nu există subiecte care să corespundă filtrelor selectate."
+    ></app-empty-state>
+  }
+
+  
+  @if (!loading() && !error() && hasData()) {
+    <div class="topics-page__grid">
+      @for (cluster of clusters(); track cluster.clusterId) {
+        <app-topic-card
+          [cluster]="cluster"
+          (cardClick)="onCardClick($event)"
+        ></app-topic-card>
+      }
+    </div>
+
+    
+    <div class="topics-page__pagination">
+      <mat-paginator
+        [length]="totalCount()"
+        [pageSize]="pageSize()"
+        [pageIndex]="page() - 1"
+        [pageSizeOptions]="[12, 20, 50]"
+        (page)="onPageChange($event)"
+        showFirstLastButtons
+        aria-label="Navigare pagini subiecte"
+      ></mat-paginator>
+    </div>
+  }
+
+</div>

@@ -1,0 +1,198 @@
+@use '../../../../app/styles/design-tokens' as *;
+
+// ── Orange (moderate concern) — midpoint between warning and error ──
+$color-orange: #EA580C;           // orange-600
+$color-orange-subtle: #FED7AA;   // orange-100
+
+// ── Tab wrapper ──────────────────────────────────────────────────────
+
+.fact-check-tab {
+  // ── Filter toolbar ──────────────────────────────────────────────
+
+  &__toolbar {
+    display: flex;
+    align-items: center;
+    padding-bottom: $space-4;
+    border-bottom: 1px solid $color-border-subtle;
+    margin-bottom: $space-6;
+  }
+
+  &__filter-field {
+    min-width: 240px;
+  }
+
+  // ── Loading spinner ──────────────────────────────────────────────
+
+  &__spinner {
+    display: flex;
+    justify-content: center;
+    padding: $space-16 0;
+  }
+
+  // ── Error card ───────────────────────────────────────────────────
+
+  &__error {
+    padding: $space-8 0;
+  }
+
+  &__error-card {
+    max-width: 520px;
+    margin: 0 auto;
+    text-align: center;
+  }
+
+  &__error-message {
+    color: $color-text-secondary;
+    margin-bottom: $space-4;
+  }
+
+  // ── Empty state ──────────────────────────────────────────────────
+
+  &__empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: $space-3;
+    padding: $space-16 0;
+    color: $color-text-tertiary;
+    font-size: $font-size-body;
+  }
+
+  &__empty-icon {
+    font-size: 48px;
+    width: 48px;
+    height: 48px;
+    opacity: 0.4;
+  }
+
+  // ── Card list ────────────────────────────────────────────────────
+
+  &__list {
+    display: flex;
+    flex-direction: column;
+    gap: $space-4;
+  }
+
+  // ── Pagination ───────────────────────────────────────────────────
+
+  &__pagination {
+    margin-top: $space-8;
+    display: flex;
+    justify-content: center;
+  }
+}
+
+// ── Fact-check card ───────────────────────────────────────────────────
+
+.fc-card {
+  border: 1px solid $color-border-subtle;
+  border-radius: $radius-lg;
+  box-shadow: $shadow-card-rest;
+  transition: box-shadow $transition-base, transform $transition-base;
+
+  &:hover {
+    box-shadow: $shadow-card-hover;
+    transform: translateY(-1px);
+  }
+
+  &__content {
+    display: flex;
+    flex-direction: column;
+    gap: $space-3;
+    padding: $space-5 !important;
+  }
+
+  // ── Header row: chip left, meta right ───────────────────────────
+
+  &__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: $space-3;
+    flex-wrap: wrap;
+  }
+
+  // ── Outlet · date metadata ───────────────────────────────────────
+
+  &__meta {
+    font-size: $font-size-small;
+    color: $color-text-tertiary;
+    white-space: nowrap;
+    margin-left: auto;
+  }
+
+  // ── Article title ─────────────────────────────────────────────────
+
+  &__title {
+    font-size: $font-size-h4;
+    font-weight: $weight-semibold;
+    color: $color-text-primary;
+    line-height: $line-height-tight;
+    margin: 0;
+
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  // ── Read link ─────────────────────────────────────────────────────
+
+  &__link {
+    display: inline-flex;
+    align-items: center;
+    gap: $space-1;
+    font-size: $font-size-small;
+    font-weight: $weight-medium;
+    color: $color-brand-primary;
+    text-decoration: none;
+    transition: color $transition-fast;
+
+    &:hover {
+      color: $color-brand-hover;
+      text-decoration: underline;
+    }
+  }
+
+  &__link-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    vertical-align: middle;
+  }
+}
+
+// ── Verdict chip ──────────────────────────────────────────────────────
+// Pill-shaped, compact — applied as a <span> with ngClass modifier.
+
+.verdict-chip {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: $font-size-tiny;
+  font-weight: $weight-semibold;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  line-height: 1.6;
+
+  &--green {
+    background: $color-success-subtle;
+    color: $color-success;
+  }
+
+  &--amber {
+    background: $color-warning-subtle;
+    color: $color-warning;
+  }
+
+  &--orange {
+    background: $color-orange-subtle;
+    color: $color-orange;
+  }
+
+  &--red {
+    background: $color-error-subtle;
+    color: $color-error;
+  }
+}

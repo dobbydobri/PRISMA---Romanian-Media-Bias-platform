@@ -1,0 +1,76 @@
+@use '../../../app/styles/design-tokens' as *;
+
+.header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  height: 64px;
+  background: $color-bg-surface;
+  border-bottom: 1px solid $color-border-subtle;
+  display: flex;
+  align-items: center;
+}
+
+.header__inner {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 $space-6;
+  display: flex;
+  align-items: center;
+  gap: $space-8;
+}
+
+.header__brand {
+  font-size: 20px;
+  font-weight: $weight-semibold;
+  color: $color-text-primary;
+  letter-spacing: -0.02em;
+  text-decoration: none;
+  flex-shrink: 0;
+
+  &:hover {
+    color: $color-brand-primary;
+  }
+}
+
+.header__nav {
+  display: flex;
+  align-items: center;
+  gap: $space-8;
+  margin-left: auto;
+}
+
+.header__nav-link {
+  font-size: $font-size-body;
+  font-weight: $weight-medium;
+  color: $color-text-secondary;
+  text-decoration: none;
+  transition: color $transition-fast;
+  cursor: pointer;
+  user-select: none;
+
+  &:hover {
+    color: $color-text-primary;
+  }
+
+  &--active {
+    color: $color-brand-primary !important;
+
+    &:hover {
+      color: $color-brand-hover !important;
+    }
+  }
+
+  &--disabled {
+    color: $color-text-tertiary;
+    cursor: default;
+    pointer-events: none;
+
+    &:hover {
+      color: $color-text-tertiary;
+    }
+  }
+}

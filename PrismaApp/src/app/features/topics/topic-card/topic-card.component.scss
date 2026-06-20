@@ -1,0 +1,90 @@
+@use '../../../../app/styles/design-tokens' as *;
+
+.topic-card {
+  background: $color-bg-surface;
+  border: 1px solid $color-border-subtle;
+  border-radius: $radius-lg;
+  padding: $space-6;
+  box-shadow: $shadow-card-rest;
+  display: flex;
+  flex-direction: column;
+  gap: $space-4;
+  cursor: pointer;
+  transition: box-shadow $transition-base, transform $transition-base;
+  outline: none;
+  min-height: 180px;
+
+  &:hover,
+  &:focus-visible {
+    box-shadow: $shadow-card-hover;
+    transform: translateY(-2px);
+  }
+
+  &:focus-visible {
+    outline: 2px solid $color-brand-primary;
+    outline-offset: 2px;
+  }
+
+  // ── Title ────────────────────────────────────────────────────────
+
+  &__title {
+    font-size: $font-size-h4;
+    font-weight: $weight-semibold;
+    color: $color-text-primary;
+    line-height: $line-height-tight;
+
+    // Clamp to max 2 lines
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  // ── Term chips ──────────────────────────────────────────────────
+
+  &__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  &__chip {
+    display: inline-block;
+    background: $color-brand-subtle;
+    color: $color-brand-primary;
+    font-size: $font-size-tiny;
+    font-weight: $weight-medium;
+    padding: 4px 10px;
+    border-radius: $radius-sm;
+    white-space: nowrap;
+  }
+
+  // ── Metadata ────────────────────────────────────────────────────
+
+  &__meta {
+    display: flex;
+    align-items: center;
+    gap: $space-2;
+    margin-top: auto;
+    padding-top: $space-4;
+    border-top: 1px solid $color-border-subtle;
+    font-size: $font-size-small;
+    color: $color-text-secondary;
+  }
+
+  &__meta-item {
+    display: flex;
+    align-items: center;
+    gap: $space-1;
+  }
+
+  &__meta-count {
+    font-weight: $weight-semibold;
+    color: $color-text-primary;
+  }
+
+  &__meta-divider {
+    color: $color-text-tertiary;
+    margin: 0 $space-1;
+  }
+}

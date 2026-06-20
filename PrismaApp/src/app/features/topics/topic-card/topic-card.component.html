@@ -1,0 +1,34 @@
+<article
+  class="topic-card"
+  (click)="onClick()"
+  (keydown.enter)="onClick()"
+  (keydown.space)="onClick()"
+  tabindex="0"
+  role="button"
+  [attr.aria-label]="'Deschide subiectul: ' + cluster().labelText"
+>
+  
+  <h4 class="topic-card__title">{{ cluster().labelText }}</h4>
+
+  
+  @if (topTerms.length > 0) {
+    <div class="topic-card__chips" aria-label="Termeni reprezentativi">
+      @for (term of topTerms; track term) {
+        <span class="topic-card__chip">{{ term }}</span>
+      }
+    </div>
+  }
+
+  
+  <div class="topic-card__meta">
+    <span class="topic-card__meta-item">
+      <span class="topic-card__meta-count">{{ cluster().articleCount }}</span>
+      {{ cluster().articleCount === 1 ? 'articol' : 'articole' }}
+    </span>
+    <span class="topic-card__meta-divider" aria-hidden="true">·</span>
+    <span class="topic-card__meta-item">
+      <span class="topic-card__meta-count">{{ cluster().outletCount }}</span>
+      {{ cluster().outletCount === 1 ? 'sursă' : 'surse' }}
+    </span>
+  </div>
+</article>

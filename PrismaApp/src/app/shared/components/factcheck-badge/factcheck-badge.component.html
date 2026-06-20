@@ -1,0 +1,72 @@
+@if (badge(); as b) {
+  <div
+    class="factcheck-badge"
+    [ngClass]="tierClass()"
+    role="region"
+    [attr.aria-label]="isTier1() ? 'Conține verificări factuale' : 'Posibil legat de verificări factuale'"
+  >
+
+    <div class="factcheck-badge__header">
+
+      <mat-icon
+        class="factcheck-badge__icon"
+        [ngClass]="isTier1() ? 'factcheck-badge__icon--tier1' : 'factcheck-badge__icon--tier2'"
+        aria-hidden="true"
+      >
+        {{ isTier1() ? 'check_circle' : 'warning_amber' }}
+      </mat-icon>
+
+      <span class="factcheck-badge__label">
+        {{ isTier1() ? 'Conține verificări factuale' : 'Posibil legat de verificări factuale' }}
+      </span>
+
+      <button
+        mat-button
+        class="factcheck-badge__toggle"
+        (click)="toggleDetails()"
+        [attr.aria-expanded]="showDetails()"
+        aria-controls="badge-details"
+      >
+        <mat-icon>{{ showDetails() ? 'expand_less' : 'expand_more' }}</mat-icon>
+        {{ showDetails() ? 'Ascunde' : 'Detalii' }}
+      </button>
+
+    </div>
+
+    @if (showDetails()) {
+      <div class="factcheck-badge__details" id="badge-details">
+        @for (fc of b.linkedFactChecks; track fc.id) {
+          <div class="factcheck-badge__item">
+
+            <span
+              class="verdict-chip"
+              [ngClass]="chipClass(fc.verdict)"
+              aria-label="Verdict: {{ chipLabel(fc.verdict) }}"
+            >
+              {{ chipLabel(fc.verdict) }}
+            </span>
+
+            <span class="factcheck-badge__item-meta">
+              {{ fc.outletName }}&nbsp;·&nbsp;{{ fc.publishedAt | date:'d MMM y':'':'ro' }}
+            </span>
+
+            @if (fc.url) {
+              <a
+                class="factcheck-badge__item-link"
+                [href]="fc.url"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Citește articolul: {{ fc.title }}"
+              >
+                Citește
+                <mat-icon class="factcheck-badge__item-link-icon" aria-hidden="true">open_in_new</mat-icon>
+              </a>
+            }
+
+          </div>
+        }
+      </div>
+    }
+
+  </div>
+}

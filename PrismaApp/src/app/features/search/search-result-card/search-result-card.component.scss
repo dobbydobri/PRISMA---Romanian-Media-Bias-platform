@@ -1,0 +1,196 @@
+@use 'sass:color';
+@use '../../../../app/styles/design-tokens' as *;
+
+// ── Card shell ──────────────────────────────────────────────────────────────
+
+.result-card {
+  display: flex;
+  flex-direction: column;
+  gap: $space-3;
+
+  background: $color-bg-surface;
+  border: 1px solid $color-border-subtle;
+  border-radius: $radius-lg;
+  padding: $space-5;
+  box-shadow: $shadow-card-rest;
+
+  // No hover lift — these link out externally, not to an in-app detail page.
+}
+
+// ── Meta row ────────────────────────────────────────────────────────────────
+
+.result-card__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $space-4;
+}
+
+.result-card__outlet {
+  font-size: $font-size-small;
+  font-weight: $weight-medium;
+  color: $color-text-secondary;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.result-card__date {
+  font-size: $font-size-small;
+  color: $color-text-tertiary;
+  white-space: nowrap;
+}
+
+// ── Title ───────────────────────────────────────────────────────────────────
+
+.result-card__title {
+  font-size: $font-size-body;
+  font-weight: $weight-semibold;
+  color: $color-text-primary;
+  line-height: $line-height-tight;
+  text-decoration: none;
+  transition: color $transition-fast;
+
+  &:hover {
+    color: $color-brand-primary;
+    text-decoration: underline;
+  }
+
+  &--no-link {
+    cursor: default;
+
+    &:hover {
+      color: $color-text-primary;
+      text-decoration: none;
+    }
+  }
+}
+
+// ── Score pills ─────────────────────────────────────────────────────────────
+
+.result-card__pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $space-2;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: $space-1;
+  padding: 3px $space-2;
+  border-radius: $radius-sm;
+  font-size: $font-size-tiny;
+  font-weight: $weight-medium;
+  border: 1px solid transparent;
+
+  // Default — neutral / mid-range score
+  background: color.adjust($color-bg-subtle, $lightness: 1%);
+  color: $color-text-secondary;
+  border-color: $color-border-subtle;
+
+  &--bad {
+    background: $color-error-subtle;
+    color: $color-error;
+    border-color: rgba($color-error, 0.2);
+  }
+
+  &--good {
+    background: $color-success-subtle;
+    color: $color-success;
+    border-color: rgba($color-success, 0.2);
+  }
+
+  &--neutral {
+    background: $color-bg-subtle;
+    color: $color-text-secondary;
+    border-color: $color-border-subtle;
+  }
+}
+
+.pill__label {
+  font-weight: $weight-regular;
+  opacity: 0.85;
+}
+
+.pill__value {
+  font-weight: $weight-semibold;
+  font-variant-numeric: tabular-nums;
+}
+
+// ── Footer ──────────────────────────────────────────────────────────────────
+
+.result-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $space-4;
+  flex-wrap: wrap;
+  margin-top: $space-1;
+}
+
+// Relevance bar
+
+.result-card__relevance {
+  display: flex;
+  align-items: center;
+  gap: $space-2;
+  flex: 1;
+  min-width: 0;
+}
+
+.result-card__relevance-label {
+  font-size: $font-size-tiny;
+  color: $color-text-tertiary;
+  white-space: nowrap;
+}
+
+.result-card__bar-track {
+  flex: 1;
+  height: 6px;
+  background: $color-border-subtle;
+  border-radius: 3px;
+  overflow: hidden;
+  min-width: 40px;
+  max-width: 120px;
+}
+
+.result-card__bar-fill {
+  height: 100%;
+  background: $color-brand-primary;
+  border-radius: 3px;
+  transition: width $transition-base;
+}
+
+.result-card__relevance-value {
+  font-size: $font-size-tiny;
+  font-weight: $weight-semibold;
+  color: $color-text-secondary;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.result-card__lexical {
+  font-size: $font-size-tiny;
+  color: $color-text-tertiary;
+  font-style: italic;
+}
+
+// Rank badges
+
+.result-card__ranks {
+  display: flex;
+  align-items: center;
+  gap: $space-2;
+  flex-shrink: 0;
+}
+
+.rank-badge {
+  font-size: $font-size-tiny;
+  font-weight: $weight-medium;
+  color: $color-text-tertiary;
+  background: $color-bg-subtle;
+  border: 1px solid $color-border-subtle;
+  border-radius: $radius-sm;
+  padding: 2px 6px;
+  white-space: nowrap;
+}

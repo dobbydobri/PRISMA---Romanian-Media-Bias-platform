@@ -1,0 +1,7 @@
+@use '../../../app/styles/design-tokens' as *;
+
+.shell__content {
+  padding-top: 64px; // height of the fixed header
+  min-height: 100vh;
+  background: $color-bg-app;
+}

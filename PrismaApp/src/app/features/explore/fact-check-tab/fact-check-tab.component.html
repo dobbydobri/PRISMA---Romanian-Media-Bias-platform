@@ -1,0 +1,98 @@
+<div class="fact-check-tab">
+
+  <div class="fact-check-tab__toolbar">
+    <mat-form-field appearance="outline" class="fact-check-tab__filter-field">
+      <mat-label>Filtru verdict</mat-label>
+      <mat-select
+        [value]="selectedVerdict()"
+        (selectionChange)="onVerdictChange($event.value)"
+        aria-label="Filtrează după verdict"
+      >
+        <mat-option [value]="undefined">Toate verdictele</mat-option>
+        @for (entry of verdictEntries; track entry[0]) {
+          <mat-option [value]="entry[0]">{{ entry[1] }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+  </div>
+
+  @if (loading()) {
+    <div class="fact-check-tab__spinner" aria-label="Se încarcă..." aria-busy="true">
+      <mat-spinner diameter="48" />
+    </div>
+  }
+
+  @if (!loading() && error()) {
+    <div class="fact-check-tab__error">
+      <mat-card class="fact-check-tab__error-card">
+        <mat-card-content>
+          <p class="fact-check-tab__error-message">{{ error() }}</p>
+          <button mat-stroked-button (click)="loadItems()">
+            <mat-icon>refresh</mat-icon>
+            Încearcă din nou
+          </button>
+        </mat-card-content>
+      </mat-card>
+    </div>
+  }
+
+  @if (!loading() && !error() && totalCount() === 0) {
+    <div class="fact-check-tab__empty">
+      <mat-icon class="fact-check-tab__empty-icon">fact_check</mat-icon>
+      <p>Nu există verificări factuale pentru filtrul selectat.</p>
+    </div>
+  }
+
+  @if (!loading() && !error() && items().length > 0) {
+    <div class="fact-check-tab__list">
+      @for (item of items(); track item.id) {
+        <mat-card class="fc-card">
+          <mat-card-content class="fc-card__content">
+
+            <div class="fc-card__header">
+              <span
+                class="verdict-chip"
+                [ngClass]="chipClass(item.verdict)"
+                aria-label="Verdict: {{ chipLabel(item.verdict) }}"
+              >
+                {{ chipLabel(item.verdict) }}
+              </span>
+              <span class="fc-card__meta">
+                {{ item.outletName }}&nbsp;·&nbsp;{{ item.publishedAt | date:'d MMM y':'':'ro' }}
+              </span>
+            </div>
+
+            <h3 class="fc-card__title">{{ item.title }}</h3>
+
+            @if (item.url) {
+              <a
+                class="fc-card__link"
+                [href]="item.url"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Citește articolul original: {{ item.title }}"
+              >
+                Citește articolul original
+                <mat-icon class="fc-card__link-icon" aria-hidden="true">open_in_new</mat-icon>
+              </a>
+            }
+
+          </mat-card-content>
+        </mat-card>
+      }
+    </div>
+
+    <div class="fact-check-tab__pagination">
+      <mat-paginator
+        [length]="totalCount()"
+        [pageSize]="PAGE_SIZE"
+        [pageIndex]="page() - 1"
+        [pageSizeOptions]="[20]"
+        (page)="onPageChange($event)"
+        showFirstLastButtons
+        aria-label="Navigare pagini verificări factuale"
+      />
+    </div>
+  }
+
+</div>

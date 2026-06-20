@@ -1,0 +1,79 @@
+@use '../../../../app/styles/design-tokens' as *;
+
+@keyframes shimmer {
+  0% {
+    background-position: -400px 0;
+  }
+  100% {
+    background-position: 400px 0;
+  }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    #f0f0f0 25%,
+    #e8e8e8 37%,
+    #f0f0f0 63%
+  );
+  background-size: 800px 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  border-radius: $radius-sm;
+}
+
+.skeleton-card {
+  background: $color-bg-surface;
+  border: 1px solid $color-border-subtle;
+  border-radius: $radius-lg;
+  padding: $space-6;
+  box-shadow: $shadow-card-rest;
+  display: flex;
+  flex-direction: column;
+  gap: $space-4;
+
+  &__title {
+    height: 20px;
+    width: 90%;
+
+    &--short {
+      width: 60%;
+    }
+  }
+
+  &__chips {
+    display: flex;
+    gap: 6px;
+    margin-top: $space-2;
+  }
+
+  &__chip {
+    height: 24px;
+    width: 64px;
+    border-radius: $radius-sm;
+
+    &--medium {
+      width: 80px;
+    }
+
+    &--long {
+      width: 56px;
+    }
+  }
+
+  &__meta {
+    display: flex;
+    gap: $space-4;
+    margin-top: auto;
+    padding-top: $space-4;
+    border-top: 1px solid $color-border-subtle;
+  }
+
+  &__meta-item {
+    height: 16px;
+    width: 80px;
+
+    &--short {
+      width: 64px;
+    }
+  }
+}
