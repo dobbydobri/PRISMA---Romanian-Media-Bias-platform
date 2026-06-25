@@ -1,0 +1,182 @@
+<div class="connection-analysis">
+  <div class="search-panel">
+    <h2 class="section-title">Analiză conexiuni</h2>
+    <p class="section-subtitle">
+      Găsește conexiuni directe sau indirecte între două entități din presa românească.
+    </p>
+
+    <div class="entity-inputs">
+      <!-- Entity A -->
+      <mat-form-field appearance="outline" class="entity-field">
+        <mat-label>Entitate A</mat-label>
+        <input
+          matInput
+          [matAutocomplete]="autoA"
+          [value]="entityAInput()"
+          (input)="onAInput($any($event.target).value)"
+          placeholder="ex. Marcel Ciolacu"
+        />
+        <mat-autocomplete #autoA (optionSelected)="onASelected($event.option.value)">
+          @for (s of suggestionsA(); track s.name) {
+            <mat-option [value]="s.name">
+              <span class="suggestion-name">{{ s.name }}</span>
+              <span class="suggestion-meta">{{ s.label }} · {{ s.articleCount }} articole</span>
+            </mat-option>
+          }
+        </mat-autocomplete>
+      </mat-form-field>
+
+      <div class="connector-icon">
+        <mat-icon>compare_arrows</mat-icon>
+      </div>
+
+      <!-- Entity B -->
+      <mat-form-field appearance="outline" class="entity-field">
+        <mat-label>Entitate B</mat-label>
+        <input
+          matInput
+          [matAutocomplete]="autoB"
+          [value]="entityBInput()"
+          (input)="onBInput($any($event.target).value)"
+          placeholder="ex. Vladimir Putin"
+        />
+        <mat-autocomplete #autoB (optionSelected)="onBSelected($event.option.value)">
+          @for (s of suggestionsB(); track s.name) {
+            <mat-option [value]="s.name">
+              <span class="suggestion-name">{{ s.name }}</span>
+              <span class="suggestion-meta">{{ s.label }} · {{ s.articleCount }} articole</span>
+            </mat-option>
+          }
+        </mat-autocomplete>
+      </mat-form-field>
+    </div>
+
+    <button
+      mat-flat-button
+      color="primary"
+      [disabled]="!canSearch() || loading()"
+      (click)="search()"
+      class="search-btn"
+    >
+      @if (loading()) {
+        <mat-spinner diameter="20" />
+      } @else {
+        <mat-icon>search</mat-icon>
+        Caută conexiuni
+      }
+    </button>
+  </div>
+
+  <!-- Results -->
+  @if (result(); as r) {
+    <div class="results-panel">
+
+      <!-- Direct connection -->
+      @if (r.direct) {
+        <div class="result-section direct-section">
+          <div class="result-header">
+            <mat-icon class="header-icon direct-icon">link</mat-icon>
+            <h3>Conexiune directă</h3>
+            <span class="article-badge">{{ r.direct.articleCount }} articole</span>
+          </div>
+          <p class="result-description">
+            <strong>{{ r.entityA }}</strong> și <strong>{{ r.entityB }}</strong>
+            apar împreună în {{ r.direct.articleCount }} articole.
+          </p>
+          <div class="article-list">
+            @for (a of r.direct.articles; track a.id) {
+              <a [href]="a.url" target="_blank" class="article-item">
+                <span class="article-title">{{ a.title }}</span>
+                <span class="article-meta">{{ a.outlet }} · {{ a.publishedAt | date:'dd MMM yyyy' }}</span>
+              </a>
+            }
+          </div>
+        </div>
+      }
+
+      <!-- Indirect paths -->
+      @if (r.indirect.length > 0) {
+        <div class="result-section indirect-section">
+          <div class="result-header">
+            <mat-icon class="header-icon indirect-icon">account_tree</mat-icon>
+            <h3>Conexiuni indirecte</h3>
+            <span class="article-badge">{{ r.indirect.length }} căi</span>
+          </div>
+
+          <mat-accordion>
+            @for (path of r.indirect; track path.nodes.join('-'); let i = $index) {
+              <mat-expansion-panel>
+                <mat-expansion-panel-header>
+                  <mat-panel-title>
+                    <div class="path-chips">
+                      @for (node of path.nodes; track node; let last = $last) {
+                        <span class="path-node">{{ node }}</span>
+                        @if (!last) {
+                          <mat-icon class="path-arrow">arrow_forward</mat-icon>
+                        }
+                      }
+                    </div>
+                  </mat-panel-title>
+                  <mat-panel-description>
+                    <span
+                      class="score-badge"
+                      [matTooltip]="'Scor bazat pe PMI mediu geometric și penalizare hub'"
+                    >
+                      scor {{ path.score | number:'1.2-2' }}
+                    </span>
+                    <span class="hop-badge">{{ path.hops }} {{ path.hops === 1 ? 'pas' : 'pași' }}</span>
+                  </mat-panel-description>
+                </mat-expansion-panel-header>
+
+                <!-- Edge evidence stacks -->
+                @for (edge of path.edges; track edge.from + edge.to) {
+                  <div class="edge-evidence">
+                    <div class="edge-label">
+                      <strong>{{ edge.from }}</strong>
+                      <mat-icon>arrow_forward</mat-icon>
+                      <strong>{{ edge.to }}</strong>
+                      <span class="pmi-chip" [matTooltip]="'Pointwise Mutual Information'">
+                        PMI {{ edge.pmi | number:'1.2-2' }}
+                      </span>
+                    </div>
+                    <div class="edge-articles">
+                      @for (a of edge.articles; track a.id) {
+                        <a [href]="a.url" target="_blank" class="article-item small">
+                          <span class="article-title">{{ a.title }}</span>
+                          <span class="article-meta">{{ a.outlet }} · {{ a.publishedAt | date:'dd MMM yyyy' }}</span>
+                        </a>
+                      }
+                    </div>
+                  </div>
+                  <mat-divider />
+                }
+              </mat-expansion-panel>
+            }
+          </mat-accordion>
+        </div>
+      }
+
+      <!-- No results at all -->
+      @if (!r.direct && r.indirect.length === 0) {
+        <div class="empty-state">
+          <mat-icon>search_off</mat-icon>
+          <p>Nu s-au găsit conexiuni între cele două entități în maximum 3 pași.</p>
+        </div>
+      }
+    </div>
+  }
+
+  @if (notFound()) {
+    <div class="empty-state">
+      <mat-icon>search_off</mat-icon>
+      <p>Nu s-a găsit nicio conexiune între <strong>{{ entityASelected() }}</strong> și <strong>{{ entityBSelected() }}</strong> în maximum 3 pași.</p>
+    </div>
+  }
+
+  @if (error()) {
+    <div class="error-state">
+      <mat-icon>error_outline</mat-icon>
+      <p>{{ error() }}</p>
+    </div>
+  }
+</div>

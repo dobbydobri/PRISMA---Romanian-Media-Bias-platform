@@ -1,0 +1,86 @@
+<div class="topic-tab">
+  @if (loading()) {
+    <div class="topic-tab__spinner" aria-label="Se încarcă..." aria-busy="true">
+      <mat-spinner diameter="48" />
+    </div>
+  }
+
+  @if (!loading() && error()) {
+    <div class="topic-tab__error">
+      <mat-card class="topic-tab__error-card">
+        <mat-card-content>
+          <p class="topic-tab__error-message">{{ error() }}</p>
+          <button mat-stroked-button (click)="loadItems()">
+            <mat-icon>refresh</mat-icon>
+            Încearcă din nou
+          </button>
+        </mat-card-content>
+      </mat-card>
+    </div>
+  }
+
+  @if (!loading() && !error() && totalCount() === 0) {
+    <div class="topic-tab__empty">
+      <mat-icon class="topic-tab__empty-icon">article</mat-icon>
+      <p>Nu există articole pentru această categorie.</p>
+    </div>
+  }
+
+  @if (!loading() && !error() && items().length > 0) {
+    <div class="topic-tab__list">
+      @for (item of items(); track item.id) {
+        <mat-card class="article-card">
+          <mat-card-content class="article-card__content">
+            <div class="article-card__header">
+              <span class="article-card__meta">
+                {{ item.outlet_name }}&nbsp;·&nbsp;{{ item.published_at | date:'d MMM y':'':'ro' }}
+              </span>
+            </div>
+            <h3 class="article-card__title">
+              @if (item.url) {
+                <a [href]="item.url" target="_blank" rel="noopener noreferrer" class="article-card__link">
+                  {{ item.title }}
+                  <mat-icon inline>open_in_new</mat-icon>
+                </a>
+              } @else {
+                {{ item.title }}
+              }
+            </h3>
+
+            <div class="article-card__scores">
+              <mat-chip-set>
+                @if (item.tf_gov_stance) {
+                  <mat-chip class="score-chip" [disableRipple]="true">
+                    Guvern: {{ item.tf_gov_stance }}
+                  </mat-chip>
+                }
+                @if (item.tf_sovereignism) {
+                  <mat-chip class="score-chip" [disableRipple]="true">
+                    Axa EU: {{ item.tf_sovereignism }}
+                  </mat-chip>
+                }
+                @if (item.tf_framing) {
+                  <mat-chip class="score-chip" [disableRipple]="true">
+                    Încadrare: {{ item.tf_framing }}
+                  </mat-chip>
+                }
+              </mat-chip-set>
+            </div>
+          </mat-card-content>
+        </mat-card>
+      }
+    </div>
+
+    <div class="topic-tab__pagination">
+      <mat-paginator
+        [length]="totalCount()"
+        [pageSize]="PAGE_SIZE"
+        [pageIndex]="page() - 1"
+        [pageSizeOptions]="[20]"
+        (page)="onPageChange($event)"
+        showFirstLastButtons
+        aria-label="Navigare pagini articole"
+      />
+    </div>
+  }
+</div>

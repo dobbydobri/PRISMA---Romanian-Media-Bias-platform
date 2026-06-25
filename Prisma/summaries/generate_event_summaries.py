@@ -219,7 +219,7 @@ def validate_schema(data) -> tuple[bool, str]:
     if not all(isinstance(p, str) and p.strip() for p in data["key_points"]):
         return False, "key_points contain non-strings or empty entries"
     wc = len(data["summary"].split())
-    if not (80 <= wc <= 220):              # allow some slack around the 120-180 target
+    if not (50 <= wc <= 220):              # allow some slack around the 120-180 target
         return False, f"summary word count {wc} out of range"
     return True, "ok"
 

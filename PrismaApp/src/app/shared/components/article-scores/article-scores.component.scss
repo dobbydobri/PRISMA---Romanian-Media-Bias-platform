@@ -1,0 +1,52 @@
+@use 'sass:color';
+@use '../../../styles/design-tokens' as *;
+
+.result-card__pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $space-2;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: $space-1;
+  padding: 3px $space-2;
+  border-radius: $radius-sm;
+  font-size: $font-size-tiny;
+  font-weight: $weight-medium;
+  border: 1px solid transparent;
+
+  // Default — neutral / mid-range score
+  background: color.adjust($color-bg-subtle, $lightness: 1%);
+  color: $color-text-secondary;
+  border-color: $color-border-subtle;
+
+  &--bad {
+    background: $color-error-subtle;
+    color: $color-error;
+    border-color: rgba($color-error, 0.2);
+  }
+
+  &--good {
+    background: $color-success-subtle;
+    color: $color-success;
+    border-color: rgba($color-success, 0.2);
+  }
+
+  &--neutral {
+    background: $color-bg-subtle;
+    color: $color-text-secondary;
+    border-color: $color-border-subtle;
+  }
+}
+
+.pill__label {
+  font-weight: $weight-regular;
+  opacity: 0.85;
+}
+
+.pill__value {
+  font-weight: $weight-semibold;
+  font-variant-numeric: tabular-nums;
+}

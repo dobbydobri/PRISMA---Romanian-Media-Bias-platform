@@ -86,6 +86,10 @@ def extract_entities_with_lemmas(texts: list[str], nlp, spacy_batch_size: int = 
                 continue
             if surface.upper() in JOURNALISTIC_NOISE:
                 continue
+            if any(surface.upper().startswith(noise + ' ') for noise in JOURNALISTIC_NOISE):
+                continue
+            if '*' in surface or surface.count('-') > 1:
+                continue
 
             if ent.label_ == 'PERSON':
                 window_start = max(0, ent.start - 3)

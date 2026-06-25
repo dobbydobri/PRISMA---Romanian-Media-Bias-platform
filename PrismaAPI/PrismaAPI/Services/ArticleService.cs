@@ -36,7 +36,7 @@ public class ArticleService
             query = query.Where(a => a.OutletId == outletId.Value);
 
         if (!string.IsNullOrWhiteSpace(topic))
-            query = query.Where(a => a.LlmTopic == topic);
+            query = query.Where(a => a.TfTopic == topic);
 
         if (!string.IsNullOrWhiteSpace(framing))
             query = query.Where(a => a.LlmFraming == framing);
@@ -63,6 +63,7 @@ public class ArticleService
                 {
                     Id = x.Article.Id,
                     Title = x.Article.Title,
+                    Url = x.Article.Url,
                     OutletName = x.OutletName,
                     PublishedAt = x.Article.PublishedAt,
                     ClusterId = x.Article.ClusterId,
@@ -70,11 +71,10 @@ public class ArticleService
                     ScoreSensationalism = x.Article.ScoreSensationalism,
                     ScoreCitationQuality = x.Article.ScoreCitationQuality,
                     ScoreRhetoricIntensity = x.Article.ScoreRhetoricIntensity,
-                    PredCoalition = x.Article.PredCoalition,
-                    PredEuAxis = x.Article.PredEuAxis,
-                    PredIsPolitical = x.Article.PredIsPolitical,
-                    LlmFraming = x.Article.LlmFraming,
-                    LlmTopic = x.Article.LlmTopic,
+                    TfGovStance = x.Article.TfGovStance,
+                    TfSovereignism = x.Article.TfSovereignism,
+                    TfFraming = x.Article.TfFraming,
+                    TfTopic = x.Article.TfTopic,
                 })
             .ToListAsync();
 
@@ -140,13 +140,10 @@ public class ArticleService
             ScoreSensationalism = article.ScoreSensationalism,
             ScoreCitationQuality = article.ScoreCitationQuality,
             ScoreRhetoricIntensity = article.ScoreRhetoricIntensity,
-            PredCoalition = article.PredCoalition,
-            PredEuAxis = article.PredEuAxis,
-            PredIsPolitical = article.PredIsPolitical,
-            LlmCoalition = article.LlmCoalition,
-            LlmEuAxis = article.LlmEuAxis,
-            LlmFraming = article.LlmFraming,
-            LlmTopic = article.LlmTopic,
+            TfGovStance = article.TfGovStance,
+            TfSovereignism = article.TfSovereignism,
+            TfFraming = article.TfFraming,
+            TfTopic = article.TfTopic,
             ClusterId = article.ClusterId,
             SubClusterId = article.SubClusterId,
             ClusterLabel = clusterLabel?.LabelText,

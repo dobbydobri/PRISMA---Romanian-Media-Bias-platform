@@ -30,13 +30,15 @@ public class ClustersController : ControllerBase
         [FromQuery] bool? isEvent,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
-        [FromQuery] string sortBy = "articleCount")
+        [FromQuery] string sortBy = "articleCount",
+        [FromQuery] DateTime? dateFrom = null,
+        [FromQuery] DateTime? dateTo = null)
     {
         _logger.LogInformation(
-            "GET /api/clusters — runId={RunId}, isEvent={IsEvent}, page={Page}, pageSize={PageSize}, sortBy={SortBy}",
-            runId, isEvent, page, pageSize, sortBy);
+            "GET /api/clusters — runId={RunId}, isEvent={IsEvent}, page={Page}, pageSize={PageSize}, sortBy={SortBy}, dateFrom={DateFrom}, dateTo={DateTo}",
+            runId, isEvent, page, pageSize, sortBy, dateFrom, dateTo);
 
-        var result = await _clusterService.GetAllAsync(runId, isEvent, page, pageSize, sortBy);
+        var result = await _clusterService.GetAllAsync(runId, isEvent, page, pageSize, sortBy, dateFrom, dateTo);
         return Ok(result);
     }
 
@@ -57,6 +59,25 @@ public class ClustersController : ControllerBase
         }
 
         return Ok(detail);
+    }
+
+    [HttpGet("{runId}/{clusterId}/summary")]
+    [ProducesResponseType(typeof(ClusterSummaryDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ClusterSummaryDto>> GetSummary(int runId, int clusterId)
+    {
+        _logger.LogInformation(
+            "GET /api/clusters/{RunId}/{ClusterId}/summary — Retrieving cluster summary",
+            runId, clusterId);
+
+        var summary = await _clusterService.GetSummaryAsync(runId, clusterId);
+        if (summary is null)
+        {
+            _logger.LogWarning("Cluster summary run={RunId}, cluster={ClusterId} not found", runId, clusterId);
+            return NotFound();
+        }
+
+        return Ok(summary);
     }
 
     [HttpGet("windows")]

@@ -75,6 +75,20 @@
             }
           </mat-select>
         </mat-form-field>
+        <mat-form-field appearance="outline" class="search-page__filter-field">
+          <mat-label>Subiecte</mat-label>
+          <mat-select
+            id="topic-select"
+            [(ngModel)]="selectedTopic"
+            aria-label="Filtrează după subiect"
+          >
+            <mat-option [value]="null">Toate subiectele</mat-option>
+            @for (t of topics; track t.topic) {
+              <mat-option [value]="t.topic">{{ t.topic }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+
 
         
         <mat-form-field appearance="outline" class="search-page__filter-field">
@@ -131,19 +145,7 @@
   @if (hasSearched() && !loading()) {
     <div class="search-page__results">
 
-      
-      @if (confidence()?.tier === 'MEDIUM') {
-        <div class="confidence-banner confidence-banner--medium" role="status" aria-live="polite">
-          <mat-icon class="confidence-banner__icon">info</mat-icon>
-          <span>Rezultate asociate căutării tale</span>
-        </div>
-      }
-      @if (confidence()?.tier === 'LOW') {
-        <div class="confidence-banner confidence-banner--low" role="status" aria-live="polite">
-          <mat-icon class="confidence-banner__icon">warning</mat-icon>
-          <span>Nu au fost găsite rezultate directe. Se afișează articole similare.</span>
-        </div>
-      }
+
 
       
       @if (!error() && hasResults()) {

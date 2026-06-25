@@ -1,4 +1,5 @@
 import psycopg2
+import ast
 import numpy as np
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -36,9 +37,14 @@ def filter_by_title_similarity(assigned_indices, titles_lookup, threshold=TITLE_
         return assigned_indices
 
     sim_matrix = cosine_similarity(tfidf_matrix)
-    avg_sim = sim_matrix.mean(axis=1)
+    # Use max pairwise similarity (excluding self) rather than average:
+    # articles covering an event from an unusual angle score low on average
+    # but remain connected to at least one cluster member — dropping them via
+    # avg-sim removes genuine cross-outlet diversity, which is what PRISMA measures.
+    np.fill_diagonal(sim_matrix, 0.0)
+    max_sim = sim_matrix.max(axis=1)
 
-    kept = [assigned_indices[i] for i, s in enumerate(avg_sim) if s >= threshold]
+    kept = [assigned_indices[i] for i, s in enumerate(max_sim) if s >= threshold]
 
     return kept if len(kept) >= 2 else assigned_indices
 
@@ -102,7 +108,106 @@ def deduplicate_articles_across_windows(window_assignments):
     return final_assignment
 
 
-# ── Main ───────────────────────────────────────────────────────────────────────
+# ── Cross-window centroid merge ────────────────────────────────────────────────
+# Articles in overlapping windows are anchored to their earliest eligible window
+# by deduplicate_articles_across_windows. This can split a single real-world event
+# across two adjacent window clusters when the event's density center straddles
+# a window boundary. This pass merges such split candidates post-hoc.
+#
+# Algorithm:
+#   1. Compute the embedding centroid of every candidate event group.
+#   2. For each pair of candidates from adjacent windows (w, w+1), compute the
+#      cosine distance between their centroids.
+#   3. If distance < MERGE_THRESHOLD, merge the smaller group into the larger,
+#      re-keying all articles under the surviving group's key.
+#
+# MERGE_THRESHOLD is set conservatively higher than SEMANTIC_THRESHOLD (0.12)
+# because centroid distances are compressed relative to pairwise distances —
+# two groups sharing ~70% of their vocabulary will have centroids much closer
+# than any individual cross-group article pair.
+
+CENTROID_MERGE_THRESHOLD = 0.18
+
+
+def merge_adjacent_window_events(event_groups, embeddings):
+    """
+    Merges event candidate groups from adjacent windows whose centroids are
+    within CENTROID_MERGE_THRESHOLD cosine distance of each other.
+
+    Args:
+        event_groups: dict mapping (window_idx, sub_label) → [article_indices]
+        embeddings:   np.ndarray of all article embeddings for this topic cluster
+
+    Returns:
+        merged_groups: dict mapping canonical key → [article_indices]
+    """
+    keys   = list(event_groups.keys())
+    groups = {k: list(v) for k, v in event_groups.items()}
+
+    # Compute centroid per group
+    def centroid(indices):
+        vecs = embeddings[indices]
+        c = vecs.mean(axis=0)
+        norm = np.linalg.norm(c)
+        return c / norm if norm > 1e-10 else c
+
+    centroids = {k: centroid(groups[k]) for k in keys}
+
+    # Union-Find for efficient group merging
+    parent = {k: k for k in keys}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra == rb:
+            return
+        # Larger group absorbs smaller
+        if len(groups[ra]) >= len(groups[rb]):
+            parent[rb] = ra
+        else:
+            parent[ra] = rb
+
+    # Only compare candidates from adjacent windows
+    by_window = defaultdict(list)
+    for k in keys:
+        by_window[k[0]].append(k)
+
+    window_indices = sorted(by_window.keys())
+    merges = 0
+
+    for i, w in enumerate(window_indices[:-1]):
+        next_w = window_indices[i + 1]
+        if next_w - w > 1:
+            continue  # non-adjacent windows, skip
+        for ka in by_window[w]:
+            for kb in by_window[next_w]:
+                if find(ka) == find(kb):
+                    continue
+                ca, cb = centroids[find(ka)], centroids[find(kb)]
+                dist = float(1.0 - np.dot(ca, cb))  # cosine distance of unit vectors
+                if dist < CENTROID_MERGE_THRESHOLD:
+                    union(ka, kb)
+                    merges += 1
+
+    # Rebuild groups under canonical (root) keys
+    merged = defaultdict(list)
+    for k in keys:
+        root = find(k)
+        merged[root].extend(groups[k])
+
+    if merges > 0:
+        print(f"  Merged {merges} cross-window boundary splits → "
+              f"{len(merged)} candidates (was {len(keys)})")
+
+    return dict(merged)
+
+
+
 
 def main():
     conn = psycopg2.connect(DB_URL)
@@ -132,6 +237,17 @@ def main():
 
         print(f"\nProcessing Run {run_id} | Topic Cluster {parent_cluster_id} ({article_count} articles)...")
 
+        # Resume guard: skip topic clusters already processed in a previous interrupted run.
+        # Safe to restart at any point — completed clusters are detected by existing event
+        # labels and skipped; only the in-progress cluster at crash time is re-processed.
+        cur.execute("""
+            SELECT COUNT(*) FROM cluster_labels
+            WHERE cluster_run_id = %s AND parent_cluster_id = %s AND is_event_cluster = TRUE;
+        """, (run_id, parent_cluster_id))
+        if cur.fetchone()[0] > 0:
+            print(f"  [SKIP] Already processed.")
+            continue
+
         cur.execute("""
             SELECT id, embedding, published_at, outlet_id, title
             FROM articles
@@ -145,7 +261,7 @@ def main():
 
         article_ids   = [r[0] for r in rows]
         embeddings    = np.array(
-            [eval(r[1]) if isinstance(r[1], str) else r[1] for r in rows],
+            [ast.literal_eval(r[1]) if isinstance(r[1], str) else r[1] for r in rows],
             dtype=np.float32
         )
         timestamps_dt = [r[2] for r in rows]
@@ -169,6 +285,11 @@ def main():
             event_groups[(window_idx, sub_label)].append(article_idx)
 
         print(f"  Initial candidates: {len(event_groups)}")
+
+        # Step 4b: Merge candidates split across adjacent window boundaries.
+        # Articles are anchored to their earliest eligible window by step 3, which
+        # can fragment a single real event whose density center straddles the boundary.
+        event_groups = merge_adjacent_window_events(event_groups, embeddings)
 
         # Step 5: Filter and persist
         events_created_this_topic = 0
@@ -235,6 +356,7 @@ def main():
     print(f"Clusters removed (1 outlet): {total_skipped_outlet}")
     print(f"Window:                      {WINDOW_DAYS}d (stride {WINDOW_STRIDE_DAYS}d)")
     print(f"Semantic threshold:          {SEMANTIC_THRESHOLD}")
+    print(f"Centroid merge threshold:    {CENTROID_MERGE_THRESHOLD}")
     print(f"Title similarity threshold:  {TITLE_SIM_THRESHOLD}")
 
     print("\nGenerating labels for new event sub-clusters...")

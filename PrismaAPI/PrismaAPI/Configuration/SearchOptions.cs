@@ -19,4 +19,6 @@ public class SearchOptions
     public int MaxTopK { get; set; } = 50;
 
     public int HnswEfSearch { get; set; } = 200;
+
+    public double ScoreRetainRatio { get; set; } = 0.5;
 }

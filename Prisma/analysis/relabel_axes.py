@@ -231,6 +231,7 @@ def main():
           AND a.llm_topic IS NOT NULL
           AND a.content_text IS NOT NULL
           AND LENGTH(a.content_text) >= 200
+          AND NOT COALESCE(a.is_excluded, false)
         ORDER BY a.id
         {limit_clause}
     """)

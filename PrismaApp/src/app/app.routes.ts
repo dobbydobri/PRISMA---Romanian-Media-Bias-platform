@@ -1,12 +1,26 @@
 import { Routes } from '@angular/router';
 
 export const routes: Routes = [
-  { path: '', redirectTo: 'topics', pathMatch: 'full' },
+  { path: '', redirectTo: 'acasa', pathMatch: 'full' },
+  {
+    path: 'acasa',
+    loadComponent: () =>
+      import('./features/home/home-page.component').then(
+        (m) => m.HomePageComponent,
+      ),
+  },
   {
     path: 'topics',
     loadComponent: () =>
       import('./features/topics/topics-page.component').then(
         (m) => m.TopicsPageComponent,
+      ),
+  },
+  {
+    path: 'topics/:runId/:clusterId',
+    loadComponent: () =>
+      import('./features/topics/topic-detail/topic-detail.component').then(
+        (m) => m.TopicDetailComponent,
       ),
   },
   {
@@ -21,6 +35,13 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/explore/explore.component').then(
         (m) => m.ExploreComponent,
+      ),
+  },
+  {
+    path: 'connections',
+    loadComponent: () =>
+      import('./connection-analysis/connection-analysis.component').then(
+        (m) => m.ConnectionAnalysisComponent,
       ),
   },
 ];

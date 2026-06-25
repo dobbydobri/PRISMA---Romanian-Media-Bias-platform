@@ -8,19 +8,20 @@
     </p>
 
     
-    <div class="topics-page__filters" aria-label="Filtre (dezactivate în această versiune)">
+    <div class="topics-page__filters" aria-label="Filtre">
       <mat-form-field appearance="outline" class="topics-page__filter-field">
-        <mat-label>Perioadă</mat-label>
-        <mat-select [disabled]="true" value="7d">
-          <mat-option value="7d">Ultimele 7 zile</mat-option>
-        </mat-select>
-      </mat-form-field>
-
-      <mat-form-field appearance="outline" class="topics-page__filter-field">
-        <mat-label>Sortare</mat-label>
-        <mat-select [disabled]="true" value="articleCount">
-          <mat-option value="articleCount">Articole</mat-option>
-        </mat-select>
+        <mat-label>Selectează perioada</mat-label>
+        <mat-date-range-input [formGroup]="dateRange" [rangePicker]="picker">
+          <input matStartDate formControlName="start" placeholder="Data început">
+          <input matEndDate formControlName="end" placeholder="Data sfârșit">
+        </mat-date-range-input>
+        <mat-datepicker-toggle matIconSuffix [for]="picker"></mat-datepicker-toggle>
+        <mat-date-range-picker #picker>
+          <mat-date-range-picker-actions>
+            <button mat-button matDateRangePickerCancel (click)="clearFilter()">Șterge</button>
+            <button mat-raised-button color="primary" matDateRangePickerApply (click)="applyFilter()">Aplică</button>
+          </mat-date-range-picker-actions>
+        </mat-date-range-picker>
       </mat-form-field>
     </div>
   </div>
@@ -57,7 +58,7 @@
   
   @if (!loading() && !error() && hasData()) {
     <div class="topics-page__grid">
-      @for (cluster of clusters(); track cluster.clusterId) {
+      @for (cluster of clusters(); track cluster.cluster_id) {
         <app-topic-card
           [cluster]="cluster"
           (cardClick)="onCardClick($event)"
@@ -71,7 +72,7 @@
         [length]="totalCount()"
         [pageSize]="pageSize()"
         [pageIndex]="page() - 1"
-        [pageSizeOptions]="[12, 20, 50]"
+        [pageSizeOptions]="[15, 30, 60]"
         (page)="onPageChange($event)"
         showFirstLastButtons
         aria-label="Navigare pagini subiecte"

@@ -1,0 +1,130 @@
+@use '../../../../app/styles/design-tokens' as *;
+
+.topic-tab {
+  &__spinner {
+    display: flex;
+    justify-content: center;
+    padding: $space-16 0;
+  }
+
+  &__error {
+    padding: $space-8 0;
+  }
+
+  &__error-card {
+    max-width: 520px;
+    margin: 0 auto;
+    text-align: center;
+  }
+
+  &__error-message {
+    color: $color-text-secondary;
+    margin-bottom: $space-4;
+  }
+
+  &__empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: $space-3;
+    padding: $space-16 0;
+    color: $color-text-tertiary;
+    font-size: $font-size-body;
+  }
+
+  &__empty-icon {
+    font-size: 48px;
+    width: 48px;
+    height: 48px;
+    opacity: 0.4;
+  }
+
+  &__list {
+    display: flex;
+    flex-direction: column;
+    gap: $space-4;
+  }
+
+  &__pagination {
+    margin-top: $space-8;
+    display: flex;
+    justify-content: center;
+  }
+}
+
+.article-card {
+  border: 1px solid $color-border-subtle;
+  border-radius: $radius-lg;
+  box-shadow: $shadow-card-rest;
+  transition: box-shadow $transition-base, transform $transition-base;
+
+  &:hover {
+    box-shadow: $shadow-card-hover;
+    transform: translateY(-1px);
+  }
+
+  &__content {
+    display: flex;
+    flex-direction: column;
+    gap: $space-3;
+    padding: $space-5 !important;
+  }
+
+  &__header {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: $space-3;
+    flex-wrap: wrap;
+  }
+
+  &__meta {
+    font-size: $font-size-small;
+    color: $color-text-tertiary;
+    white-space: nowrap;
+  }
+
+  &__title {
+    font-size: $font-size-h4;
+    font-weight: $weight-semibold;
+    color: $color-text-primary;
+    line-height: $line-height-tight;
+    margin: 0;
+
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  &__link {
+    color: inherit;
+    text-decoration: none;
+    transition: color $transition-base;
+    display: flex;
+    align-items: center;
+    gap: $space-2;
+
+    &:hover {
+      color: $color-brand-primary;
+      text-decoration: underline;
+    }
+
+    mat-icon {
+      font-size: 1.1em;
+      width: 1.1em;
+      height: 1.1em;
+      color: $color-text-tertiary;
+    }
+  }
+
+  &__scores {
+    margin-top: $space-2;
+  }
+}
+
+.score-chip {
+  --mdc-chip-label-text-size: 12px;
+  --mdc-chip-label-text-color: #{$color-text-secondary};
+  --mdc-chip-container-height: 24px;
+}

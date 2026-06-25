@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Npgsql;
+using Pgvector;
 using PrismaAPI.Configuration;
 using PrismaAPI.Data;
 using PrismaAPI.Services;
@@ -22,8 +23,6 @@ builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower;
-        options.JsonSerializerOptions.DefaultIgnoreCondition = 
-            System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
     });
 
 builder.Services.AddEndpointsApiExplorer();
@@ -47,7 +46,8 @@ builder.Services.AddDbContext<PrismaDbContext>(options =>
 });
 
 builder.Services.AddNpgsqlDataSource(
-    builder.Configuration.GetConnectionString("DefaultConnection")!);
+    builder.Configuration.GetConnectionString("DefaultConnection")!,
+    dataSourceBuilder => dataSourceBuilder.UseVector());
 
 builder.Services.Configure<SearchOptions>(
     builder.Configuration.GetSection(SearchOptions.Section));
@@ -66,6 +66,15 @@ builder.Services.AddHttpClient("QueryEmbedder", (sp, client) =>
     client.Timeout = TimeSpan.FromMilliseconds(opts.EmbedderTimeoutMs);
 });
 
+builder.Services.AddHttpClient("GraphService", client =>
+{
+    var graphServiceUrl = builder.Configuration["GraphService:BaseUrl"]
+        ?? "http://prisma-graph-service:8082";
+    client.BaseAddress = new Uri(graphServiceUrl);
+    client.Timeout = TimeSpan.FromSeconds(30);
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler())
+  .AddTypedClient((client) => client);
+
 builder.Services.AddScoped<OutletService>();
 builder.Services.AddScoped<ArticleService>();
 builder.Services.AddScoped<ClusterService>();
@@ -74,6 +83,7 @@ builder.Services.AddScoped<FactCheckService>();
 builder.Services.AddScoped<AnalysisService>();
 builder.Services.AddScoped<ISearchService, SearchService>();
 builder.Services.AddScoped<ConnectionsService>();
+builder.Services.AddScoped<ConnectionsPathService>();
 
 var app = builder.Build();
 

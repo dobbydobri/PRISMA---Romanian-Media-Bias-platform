@@ -29,7 +29,7 @@ public class FactCheck
     [Column("claim_text")]
     public string? ClaimText { get; set; }
 
-    [MaxLength(80)]
+    [MaxLength(255)]
     [Column("raw_verdict")]
     public string? RawVerdict { get; set; }
 
@@ -38,6 +38,9 @@ public class FactCheck
 
     [Column("created_at")]
     public DateTime? CreatedAt { get; set; }
+
+    [Column("severity_score")]
+    public short? SeverityScore { get; set; }
 
 
     public Article Article { get; set; } = null!;

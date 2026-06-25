@@ -2,15 +2,17 @@ import argparse
 import json
 import logging
 import time
+from collections import defaultdict
 from pathlib import Path
 
-import numpy as np
 import psycopg2
 import psycopg2.extras
 import torch
 import torch.nn.functional as F
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoModel, AutoTokenizer, logging as hf_logging
 from env import DATABASE_URL
+
+hf_logging.set_verbosity_error()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -19,26 +21,25 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-DB_URL = DATABASE_URL
-MODEL_DIR = Path("transformer_model")
-BATCH_SIZE = 64
+DB_URL      = DATABASE_URL
+MODEL_DIR   = Path("transformer_model")
+BATCH_SIZE  = 64        
+PAGE_SIZE   = 500       
+DB_BATCH    = 500       
 MAX_SEQ_LEN = 512
 HEAD_TOKENS = 380
 TAIL_TOKENS = 100
-DB_BATCH = 500
 
 
-# ── Model (must match training) ──────────────────────────────────────────────
+# ── Model (must match training architecture exactly) ─────────────────────────
 
 class MultiTaskBiasClassifier(torch.nn.Module):
-    """Must match training architecture exactly."""
-
     def __init__(self, model_name, axes_config, dropout=0.1):
         super().__init__()
         self.backbone = AutoModel.from_pretrained(model_name)
         hidden_size = self.backbone.config.hidden_size
         self.dropout = torch.nn.Dropout(dropout)
-        self.axes_config = axes_config  # list of dicts from config.json
+        self.axes_config = axes_config
 
         self.heads = torch.nn.ModuleDict({
             ac["name"]: torch.nn.Linear(hidden_size, len(ac["classes"]))
@@ -54,26 +55,22 @@ class MultiTaskBiasClassifier(torch.nn.Module):
         }
 
 
-# ── Tokenization (head + tail, matches training) ─────────────────────────────
+# ── Tokenization ──────────────────────────────────────────────────────────────
 
 def encode_batch(titles, bodies, tokenizer):
-    """Tokenize a batch with head+tail strategy."""
+    """Head+tail tokenization — must match training exactly."""
     all_input_ids = []
-    all_attention = []
+    all_attention  = []
 
     for title, body in zip(titles, bodies):
         title = title or ""
-        body = body or ""
+        body  = body  or ""
 
-        title_enc = tokenizer(title, add_special_tokens=False, truncation=False)
-        title_ids = title_enc["input_ids"]
+        title_ids = tokenizer(title, add_special_tokens=False, truncation=False)["input_ids"]
+        body_ids  = tokenizer(body,  add_special_tokens=False, truncation=False)["input_ids"]
 
-        body_enc = tokenizer(body, add_special_tokens=False, truncation=False)
-        body_ids = body_enc["input_ids"]
-
-        special_tokens = 3
         title_budget = min(len(title_ids), 60)
-        body_budget = MAX_SEQ_LEN - special_tokens - title_budget
+        body_budget  = MAX_SEQ_LEN - 3 - title_budget  
 
         if len(body_ids) <= body_budget:
             body_selected = body_ids
@@ -82,43 +79,40 @@ def encode_batch(titles, bodies, tokenizer):
             tail_len = body_budget - head_len
             body_selected = body_ids[:head_len] + body_ids[-tail_len:]
 
-        cls_id = tokenizer.cls_token_id
-        sep_id = tokenizer.sep_token_id
-
         input_ids = (
-            [cls_id]
+            [tokenizer.cls_token_id]
             + title_ids[:title_budget]
-            + [sep_id]
+            + [tokenizer.sep_token_id]
             + body_selected
-            + [sep_id]
+            + [tokenizer.sep_token_id]
         )
-
         attention_mask = [1] * len(input_ids)
+
         pad_len = MAX_SEQ_LEN - len(input_ids)
         if pad_len > 0:
-            input_ids += [tokenizer.pad_token_id] * pad_len
+            input_ids      += [tokenizer.pad_token_id] * pad_len
             attention_mask += [0] * pad_len
 
         all_input_ids.append(input_ids)
         all_attention.append(attention_mask)
 
     return {
-        "input_ids": torch.tensor(all_input_ids, dtype=torch.long),
-        "attention_mask": torch.tensor(all_attention, dtype=torch.long),
+        "input_ids":      torch.tensor(all_input_ids, dtype=torch.long),
+        "attention_mask": torch.tensor(all_attention,  dtype=torch.long),
     }
 
 
-# ── Database operations ──────────────────────────────────────────────────────
+# ── Database helpers ──────────────────────────────────────────────────────────
 
 def ensure_columns_exist(conn, axes_config):
-    """Add transformer prediction columns if they don't exist."""
+    """Create tf_ columns if they don't already exist."""
     cur = conn.cursor()
     for ac in axes_config:
-        col_pred = f"tf_{ac['name']}"
-        col_prob = f"tf_{ac['name']}_prob"
-        col_conf = f"tf_{ac['name']}_conf"
-
-        for col, dtype in [(col_pred, "TEXT"), (col_prob, "JSONB"), (col_conf, "REAL")]:
+        for col, dtype in [
+            (f"tf_{ac['name']}",      "TEXT"),
+            (f"tf_{ac['name']}_prob", "JSONB"),
+            (f"tf_{ac['name']}_conf", "REAL"),
+        ]:
             cur.execute(f"""
                 DO $$
                 BEGIN
@@ -126,51 +120,80 @@ def ensure_columns_exist(conn, axes_config):
                 EXCEPTION WHEN duplicate_column THEN NULL;
                 END $$;
             """)
-
     conn.commit()
     cur.close()
     log.info("Database columns verified.")
 
 
-def fetch_articles(conn, rescore: bool):
-    """Fetch articles for inference."""
-    where = "" if rescore else "AND tf_gov_stance IS NULL"
-
-    cur = conn.cursor(name="inference_cursor", cursor_factory=psycopg2.extras.DictCursor)
-    cur.itersize = DB_BATCH
-
+def fetch_page(conn, last_id: int, rescore: bool) -> list[dict]:
+    where_rescore = "" if rescore else "AND tf_gov_stance IS NULL"
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cur.execute(f"""
         SELECT id, title, content_text
         FROM articles
-        WHERE content_text IS NOT NULL
+        WHERE id > %s
+          AND content_text IS NOT NULL
           AND LENGTH(content_text) >= 200
-          {where}
+          AND COALESCE(is_excluded, false) = false
+          {where_rescore}
         ORDER BY id
-    """)
-    return cur
+        LIMIT %s
+    """, (last_id, PAGE_SIZE))
+    rows = [dict(r) for r in cur.fetchall()]
+    cur.close()
+    return rows
 
 
 def store_predictions(conn, batch_results: list[dict], axes_config):
-    """Write predictions to database."""
+    """Write a batch of predictions to the database."""
     if not batch_results:
         return
-
-    cur = conn.cursor()
-
     set_parts = []
     for ac in axes_config:
         set_parts.append(f"tf_{ac['name']} = %(tf_{ac['name']})s")
         set_parts.append(f"tf_{ac['name']}_prob = %(tf_{ac['name']}_prob)s")
         set_parts.append(f"tf_{ac['name']}_conf = %(tf_{ac['name']}_conf)s")
-    set_clause = ", ".join(set_parts)
 
-    query = f"UPDATE articles SET {set_clause} WHERE id = %(id)s"
+    query = f"UPDATE articles SET {', '.join(set_parts)} WHERE id = %(id)s"
+    cur = conn.cursor()
     psycopg2.extras.execute_batch(cur, query, batch_results, page_size=DB_BATCH)
     conn.commit()
     cur.close()
 
 
-# ── Main inference loop ──────────────────────────────────────────────────────
+# ── Batch prediction ──────────────────────────────────────────────────────────
+
+def predict_batch(ids, titles, bodies, model, tokenizer, axes_config, device):
+    encoding       = encode_batch(titles, bodies, tokenizer)
+    input_ids      = encoding["input_ids"].to(device)
+    attention_mask = encoding["attention_mask"].to(device)
+
+    use_cuda = device.type == "cuda"
+    with torch.no_grad(), torch.amp.autocast("cuda", enabled=use_cuda):
+        logits = model(input_ids, attention_mask)
+
+    results = []
+    for i, art_id in enumerate(ids):
+        row = {"id": art_id}
+        for ac in axes_config:
+            probs      = F.softmax(logits[ac["name"]][i], dim=-1).cpu().numpy()
+            pred_idx   = int(probs.argmax())
+            pred_label = ac["classes"][pred_idx]
+            confidence = float(probs[pred_idx])
+
+            row[f"tf_{ac['name']}"]      = pred_label
+            row[f"tf_{ac['name']}_prob"] = json.dumps(
+                {ac["classes"][j]: round(float(probs[j]), 4)
+                 for j in range(len(ac["classes"]))},
+                ensure_ascii=False,
+            )
+            row[f"tf_{ac['name']}_conf"] = round(confidence, 4)
+        results.append(row)
+
+    return results
+
+
+# ── Main inference loop ───────────────────────────────────────────────────────
 
 def run_inference(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -178,13 +201,12 @@ def run_inference(args):
 
     with open(MODEL_DIR / "config.json") as f:
         config = json.load(f)
-
     axes_config = config["axes"]
-    model_name = config["model_name"]
+    model_name  = config["model_name"]
 
     log.info("Loading model...")
     tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR / "tokenizer")
-    model = MultiTaskBiasClassifier(model_name, axes_config)
+    model     = MultiTaskBiasClassifier(model_name, axes_config)
     model.load_state_dict(
         torch.load(MODEL_DIR / "best_model.pt", map_location=device, weights_only=True)
     )
@@ -195,11 +217,14 @@ def run_inference(args):
     conn = psycopg2.connect(DB_URL)
     ensure_columns_exist(conn, axes_config)
 
+    where_rescore = "" if args.rescore else "AND tf_gov_stance IS NULL"
     cur = conn.cursor()
-    where = "" if args.rescore else "AND tf_gov_stance IS NULL"
     cur.execute(f"""
         SELECT COUNT(*) FROM articles
-        WHERE content_text IS NOT NULL AND LENGTH(content_text) >= 200 {where}
+        WHERE content_text IS NOT NULL
+          AND LENGTH(content_text) >= 200
+          AND COALESCE(is_excluded, false) = false
+          {where_rescore}
     """)
     total = cur.fetchone()[0]
     cur.close()
@@ -210,97 +235,51 @@ def run_inference(args):
         conn.close()
         return
 
-    article_cursor = fetch_articles(conn, args.rescore)
-    processed = 0
-    start = time.time()
+    processed  = 0
+    last_id    = 0
+    db_buffer  = []
+    start      = time.time()
 
-    batch_ids = []
-    batch_titles = []
-    batch_bodies = []
-    db_batch = []
+    while True:
+        page = fetch_page(conn, last_id, args.rescore)
+        if not page:
+            break
 
-    for row in article_cursor:
-        batch_ids.append(row["id"])
-        batch_titles.append(row["title"])
-        batch_bodies.append(row["content_text"])
+        last_id = page[-1]["id"]
 
-        if len(batch_ids) >= BATCH_SIZE:
-            results = _predict_batch(
-                batch_ids, batch_titles, batch_bodies,
-                model, tokenizer, axes_config, device
-            )
-            db_batch.extend(results)
+        for offset in range(0, len(page), BATCH_SIZE):
+            gpu_batch  = page[offset: offset + BATCH_SIZE]
+            ids        = [r["id"]           for r in gpu_batch]
+            titles     = [r["title"]        for r in gpu_batch]
+            bodies     = [r["content_text"] for r in gpu_batch]
 
-            if len(db_batch) >= DB_BATCH:
-                if not args.dry_run:
-                    store_predictions(conn, db_batch, axes_config)
-                processed += len(db_batch)
-                db_batch = []
+            results = predict_batch(ids, titles, bodies, model, tokenizer, axes_config, device)
+            db_buffer.extend(results)
 
-                elapsed = time.time() - start
-                rate = processed / elapsed if elapsed > 0 else 0
-                log.info(f"  {processed:,} / {total:,}  ({rate:.0f} art/sec)")
-
-            batch_ids, batch_titles, batch_bodies = [], [], []
-
-    if batch_ids:
-        results = _predict_batch(
-            batch_ids, batch_titles, batch_bodies,
-            model, tokenizer, axes_config, device
-        )
-        db_batch.extend(results)
-
-    if db_batch:
         if not args.dry_run:
-            store_predictions(conn, db_batch, axes_config)
-        processed += len(db_batch)
+            store_predictions(conn, db_buffer, axes_config)
 
-    article_cursor.close()
+        processed += len(db_buffer)
+        db_buffer  = []
+
+        elapsed = time.time() - start
+        rate    = processed / elapsed if elapsed > 0 else 0
+        log.info(f"  {processed:,} / {total:,}  ({rate:.0f} art/sec)")
+
     conn.close()
 
     elapsed = time.time() - start
-    log.info(f"\nComplete. {processed:,} articles scored in {elapsed:.1f}s "
-             f"({processed / elapsed:.0f} art/sec)")
+    log.info(
+        f"\nComplete. {processed:,} articles scored in {elapsed:.1f}s "
+        f"({processed / elapsed:.0f} art/sec)"
+    )
 
 
-def _predict_batch(ids, titles, bodies, model, tokenizer, axes_config, device):
-    encoding = encode_batch(titles, bodies, tokenizer)
-    input_ids = encoding["input_ids"].to(device)
-    attention_mask = encoding["attention_mask"].to(device)
-
-    use_cuda = device.type == "cuda"
-    with torch.no_grad(), torch.amp.autocast("cuda", enabled=use_cuda):
-        logits = model(input_ids, attention_mask)
-
-    results = []
-    for i, art_id in enumerate(ids):
-        row = {"id": art_id}
-
-        for ac in axes_config:
-            probs = F.softmax(logits[ac["name"]][i], dim=-1).cpu().numpy()
-            pred_idx = int(probs.argmax())
-            pred_label = ac["classes"][pred_idx]
-            confidence = float(probs[pred_idx])
-
-            row[f"tf_{ac['name']}"] = pred_label
-            row[f"tf_{ac['name']}_prob"] = json.dumps(
-                {ac["classes"][j]: round(float(probs[j]), 4)
-                 for j in range(len(ac["classes"]))},
-                ensure_ascii=False
-            )
-            row[f"tf_{ac['name']}_conf"] = round(confidence, 4)
-
-        results.append(row)
-
-    return results
-
-
-# ── Sanity check ─────────────────────────────────────────────────────────────
+# ── Outlet summary ────────────────────────────────────────────────────────────
 
 def print_outlet_summary(args):
-    """Print per-outlet prediction distributions after inference."""
     conn = psycopg2.connect(DB_URL)
-    cur = conn.cursor()
+    cur  = conn.cursor()
 
     with open(MODEL_DIR / "config.json") as f:
         axes_config = json.load(f)["axes"]
@@ -323,15 +302,14 @@ def print_outlet_summary(args):
         print(f"  {ac['name']} — per-outlet distribution")
         print(f"{'═' * 70}")
 
-        from collections import defaultdict
-        outlet_dist = defaultdict(lambda: defaultdict(int))
+        outlet_dist  = defaultdict(lambda: defaultdict(int))
         outlet_types = {}
         for outlet, otype, label, count in rows:
             outlet_dist[outlet][label] = count
             outlet_types[outlet] = otype
 
         classes = ac["classes"]
-        header = f"{'Outlet':<25} {'Type':<20} " + "".join(f"{c:>14}" for c in classes)
+        header  = f"{'Outlet':<25} {'Type':<20} " + "".join(f"{c:>16}" for c in classes)
         print(header)
         print("-" * len(header))
 
@@ -339,7 +317,7 @@ def print_outlet_summary(args):
             total = sum(outlet_dist[outlet].values())
             parts = []
             for c in classes:
-                n = outlet_dist[outlet].get(c, 0)
+                n   = outlet_dist[outlet].get(c, 0)
                 pct = n / total * 100 if total else 0
                 parts.append(f"{n:>5} ({pct:4.1f}%)")
             print(f"{outlet:<25} {outlet_types[outlet]:<20} {''.join(parts)}")
@@ -348,15 +326,15 @@ def print_outlet_summary(args):
     conn.close()
 
 
-# ── Entry point ──────────────────────────────────────────────────────────────
+# ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="PRISMA transformer inference")
-    parser.add_argument("--rescore", action="store_true",
-                        help="Rescore all articles (not just unscored)")
-    parser.add_argument("--dry-run", action="store_true",
+    parser.add_argument("--rescore",  action="store_true",
+                        help="Rescore all articles, not just unscored ones")
+    parser.add_argument("--dry-run",  action="store_true",
                         help="Run inference without writing to DB")
-    parser.add_argument("--summary", action="store_true",
+    parser.add_argument("--summary",  action="store_true",
                         help="Print per-outlet distribution summary")
     args = parser.parse_args()
 

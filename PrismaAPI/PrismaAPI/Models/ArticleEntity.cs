@@ -19,7 +19,7 @@ public class ArticleEntity
     public string EntityText { get; set; } = string.Empty;
 
     [Required]
-    [MaxLength(20)]
+    [MaxLength(50)]
     [Column("entity_label")]
     public string EntityLabel { get; set; } = string.Empty;
 

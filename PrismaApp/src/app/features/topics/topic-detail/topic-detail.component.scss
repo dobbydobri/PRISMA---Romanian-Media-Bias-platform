@@ -1,0 +1,205 @@
+@use '../../../styles/design-tokens' as *;
+
+.topic-detail {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: $space-4 $space-6;
+
+  &__header {
+    margin-bottom: $space-6;
+  }
+
+  &__back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: $space-2;
+    color: $color-text-secondary;
+    text-decoration: none;
+    font-weight: $weight-medium;
+    transition: color $transition-fast;
+
+    &:hover {
+      color: $color-brand-primary;
+    }
+
+    mat-icon {
+      font-size: 20px;
+      width: 20px;
+      height: 20px;
+    }
+  }
+
+  &__loading {
+    display: flex;
+    flex-direction: column;
+    gap: $space-6;
+
+    .skeleton-summary,
+    .skeleton-articles {
+      height: 200px;
+      background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: $radius-lg;
+    }
+
+    @keyframes shimmer {
+      0% {
+        background-position: 200% 0;
+      }
+      100% {
+        background-position: -200% 0;
+      }
+    }
+  }
+
+  &__content {
+    display: flex;
+    flex-direction: column;
+    gap: $space-10;
+  }
+}
+
+// ── Summary Section ────────────────────────────────────────────────────────
+
+.topic-summary {
+  &__title {
+    font-size: $font-size-h2;
+    color: $color-text-primary;
+    margin-bottom: $space-4;
+    font-weight: $weight-bold;
+  }
+
+  &__card {
+    background: $color-bg-surface;
+    border: 1px solid $color-border-subtle;
+    border-radius: $radius-lg;
+    overflow: hidden;
+  }
+
+  &__card-header {
+    background: $color-bg-app;
+    padding: $space-3 $space-4;
+    border-bottom: 1px solid $color-border-subtle;
+
+    h3 {
+      margin: 0;
+      font-size: $font-size-h4;
+      color: $color-text-primary;
+      font-weight: $weight-semibold;
+    }
+  }
+
+  &__card-body {
+    padding: $space-5;
+  }
+
+  &__text {
+    color: $color-text-secondary;
+    font-size: $font-size-body;
+    line-height: $line-height-relaxed;
+    margin-bottom: $space-4;
+  }
+
+  &__key-points {
+    margin: 0;
+    padding-left: $space-5;
+    color: $color-text-secondary;
+    line-height: $line-height-relaxed;
+
+    li {
+      margin-bottom: $space-2;
+    }
+  }
+
+  &__empty {
+    display: flex;
+    align-items: center;
+    gap: $space-3;
+    padding: $space-5;
+    color: $color-text-tertiary;
+
+    mat-icon {
+      color: $color-text-tertiary;
+    }
+  }
+}
+
+// ── Articles Section ───────────────────────────────────────────────────────
+
+.topic-articles {
+  &__title {
+    font-size: $font-size-h3;
+    color: $color-text-primary;
+    margin-bottom: $space-6;
+    font-weight: $weight-bold;
+  }
+
+  &__empty {
+    color: $color-text-tertiary;
+  }
+}
+
+.outlet-group {
+  margin-bottom: $space-8;
+
+  &__name {
+    font-size: $font-size-h4;
+    color: $color-text-primary;
+    margin-bottom: $space-4;
+    padding-bottom: $space-2;
+    border-bottom: 2px solid $color-border-subtle;
+  }
+
+  &__articles {
+    display: flex;
+    flex-direction: column;
+    gap: $space-3;
+  }
+}
+
+.outlet-article-card {
+  display: flex;
+  flex-direction: column;
+  gap: $space-2;
+  padding: $space-4;
+  background: $color-bg-surface;
+  border: 1px solid $color-border-subtle;
+  border-radius: $radius-md;
+  transition: transform $transition-fast, box-shadow $transition-fast;
+
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: $shadow-card-hover;
+  }
+
+  &__meta {
+    font-size: $font-size-small;
+    color: $color-text-tertiary;
+  }
+
+  &__title {
+    font-size: $font-size-body;
+    font-weight: $weight-semibold;
+    color: $color-text-primary;
+    text-decoration: none;
+    line-height: $line-height-tight;
+
+    &:hover {
+      color: $color-brand-primary;
+      text-decoration: underline;
+    }
+
+    &--no-link {
+      cursor: default;
+      &:hover {
+        color: $color-text-primary;
+        text-decoration: none;
+      }
+    }
+  }
+
+  &__scores {
+    margin-top: $space-1;
+  }
+}

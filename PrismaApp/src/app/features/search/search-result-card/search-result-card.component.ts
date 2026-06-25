@@ -1,6 +1,7 @@
 import { Component, Input } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
 import { ArticleSearchResult } from '../../../core/models/search.model';
+import { ArticleScoresComponent } from '../../../shared/components/article-scores/article-scores.component';
 
 
 const RO_MONTHS = [
@@ -11,7 +12,7 @@ const RO_MONTHS = [
 @Component({
   selector: 'app-search-result-card',
   standalone: true,
-  imports: [MatIconModule],
+  imports: [MatIconModule, ArticleScoresComponent],
   templateUrl: './search-result-card.component.html',
   styleUrl: './search-result-card.component.scss',
 })
@@ -27,24 +28,8 @@ export class SearchResultCardComponent {
     return `${d.getDate()} ${RO_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
   }
 
-  // ── Score pill helpers ─────────────────────────────────────────────────────
-
-  
-  pillClass(score: number | null, goodWhenHigh: boolean): string {
-    if (score === null) return '';
-    if (score >= 0.7) return goodWhenHigh ? 'pill--good' : 'pill--bad';
-    if (score < 0.3) return goodWhenHigh ? 'pill--bad' : 'pill--good';
-    return 'pill--neutral';
-  }
-
-  
-  fmtScore(score: number): string {
-    return score.toFixed(2);
-  }
-
   // ── Relevance bar ──────────────────────────────────────────────────────────
 
-  
   get relevanceWidth(): string {
     const v = this.article.cos_sim;
     if (v === null) return '0%';
@@ -52,8 +37,16 @@ export class SearchResultCardComponent {
   }
 
   get relevanceLabel(): string {
-    const v = this.article.cos_sim;
-    if (v === null) return '';
-    return v.toFixed(2);
+    return this.article.rrf_score.toFixed(2);
+  }
+
+  get matchType(): string {
+    const hasDense = this.article.dense_rank !== null;
+    const hasSparse = this.article.sparse_rank !== null;
+    
+    if (hasDense && hasSparse) return 'Potrivire hibridă';
+    if (hasDense) return 'Potrivire semantică';
+    if (hasSparse) return 'Potrivire lexicală';
+    return 'Potrivire implicită';
   }
 }

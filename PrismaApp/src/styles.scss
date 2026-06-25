@@ -1,4 +1,5 @@
 @use 'app/styles/design-tokens' as *;
+@import '@angular/material/prebuilt-themes/indigo-pink.css';
 
 html,
 body {
@@ -64,4 +65,8 @@ a {
   font-family: $font-family-base !important;
   font-size: $font-size-small !important;
   color: $color-text-secondary !important;
+}
+
+.cdk-overlay-container {
+  z-index: 1000 !important;
 }

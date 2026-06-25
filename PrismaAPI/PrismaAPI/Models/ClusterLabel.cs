@@ -45,6 +45,9 @@ public class ClusterLabel
     [Column("is_event_cluster")]
     public bool IsEventCluster { get; set; }
 
+    [Column("centroid", TypeName = "vector(1024)")]
+    public Pgvector.Vector? Centroid { get; set; }
+
 
     public ClusterRun ClusterRun { get; set; } = null!;
 }

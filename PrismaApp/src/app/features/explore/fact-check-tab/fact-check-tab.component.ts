@@ -55,7 +55,7 @@ export class FactCheckTabComponent implements OnInit {
       .subscribe({
         next: (res: PaginatedResult<FactCheckListItem>) => {
           this.items.set(res.items);
-          this.totalCount.set(res.totalCount);
+          this.totalCount.set(res.total_count);
           this.loading.set(false);
         },
         error: (err: unknown) => {

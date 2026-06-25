@@ -1,0 +1,41 @@
+@use '../../styles/design-tokens' as *;
+
+.home-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: calc(100vh - 120px);
+  padding: $space-8;
+  text-align: center;
+}
+
+.home-content {
+  max-width: 800px;
+  background-color: $color-bg-surface;
+  padding: $space-12;
+  border-radius: $radius-xl;
+  box-shadow: $shadow-card-rest;
+  transition: box-shadow $transition-base;
+
+  &:hover {
+    box-shadow: $shadow-elevated;
+  }
+}
+
+.title {
+  font-family: $font-family-base;
+  font-size: $font-size-h1;
+  font-weight: $weight-bold;
+  margin-bottom: $space-6;
+  background: linear-gradient(135deg, $color-brand-primary, #60A5FA);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.description {
+  font-family: $font-family-base;
+  font-size: $font-size-h3;
+  line-height: $line-height-relaxed;
+  color: $color-text-secondary;
+}

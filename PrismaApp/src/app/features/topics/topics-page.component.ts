@@ -1,7 +1,12 @@
 import { Component, inject, signal, computed, OnInit } from '@angular/core';
+import { Router } from '@angular/router';
 import { PageEvent, MatPaginatorModule } from '@angular/material/paginator';
-import { MatSelectModule } from '@angular/material/select';
 import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatDatepickerModule } from '@angular/material/datepicker';
+import { MatNativeDateModule } from '@angular/material/core';
+import { ReactiveFormsModule, FormGroup, FormControl } from '@angular/forms';
+import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
 
 import { ClustersService } from '../../core/api/clusters.service';
 import { ClusterListItem, PaginatedResult } from '../../core/models/cluster.model';
@@ -14,8 +19,12 @@ import { EmptyStateComponent } from '../../shared/components/empty-state/empty-s
   standalone: true,
   imports: [
     MatPaginatorModule,
-    MatSelectModule,
     MatFormFieldModule,
+    MatDatepickerModule,
+    MatNativeDateModule,
+    ReactiveFormsModule,
+    MatButtonModule,
+    MatIconModule,
     TopicCardComponent,
     TopicCardSkeletonComponent,
     EmptyStateComponent,
@@ -25,17 +34,23 @@ import { EmptyStateComponent } from '../../shared/components/empty-state/empty-s
 })
 export class TopicsPageComponent implements OnInit {
   private clustersService = inject(ClustersService);
+  private router = inject(Router);
 
   // ── UI state ─────────────────────────────────────────────────────
   page = signal(1);
-  pageSize = signal(20);
+  pageSize = signal(15);
   loading = signal(true);
   error = signal<string | null>(null);
   result = signal<PaginatedResult<ClusterListItem> | null>(null);
 
+  dateRange = new FormGroup({
+    start: new FormControl<Date | null>(null),
+    end: new FormControl<Date | null>(null),
+  });
+
   // ── Derived state ─────────────────────────────────────────────────
   clusters = computed(() => this.result()?.items ?? []);
-  totalCount = computed(() => this.result()?.totalCount ?? 0);
+  totalCount = computed(() => this.result()?.total_count ?? 0);
   hasData = computed(() => this.clusters().length > 0);
 
   
@@ -49,8 +64,11 @@ export class TopicsPageComponent implements OnInit {
     this.loading.set(true);
     this.error.set(null);
 
+    const start = this.dateRange.value.start;
+    const end = this.dateRange.value.end;
+
     this.clustersService
-      .getClusters(false, this.page(), this.pageSize())
+      .getClusters(true, this.page(), this.pageSize(), start || null, end || null)
       .subscribe({
         next: (res) => {
           this.result.set(res);
@@ -74,11 +92,17 @@ export class TopicsPageComponent implements OnInit {
   }
 
   onCardClick(cluster: ClusterListItem): void {
-    // Story Detail page is deferred to iteration 2
-    console.log(
-      '[TopicsPage] Navigate to cluster:',
-      cluster.clusterRunId,
-      cluster.clusterId,
-    );
+    this.router.navigate(['/topics', cluster.run_id, cluster.cluster_id]);
+  }
+
+  applyFilter(): void {
+    this.page.set(1);
+    this.fetchClusters();
+  }
+
+  clearFilter(): void {
+    this.dateRange.reset();
+    this.page.set(1);
+    this.fetchClusters();
   }
 }

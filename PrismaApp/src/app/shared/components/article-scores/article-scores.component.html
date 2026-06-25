@@ -1,0 +1,22 @@
+@if (scoreSensationalism !== null || scoreCitationQuality !== null || scoreRhetoricIntensity !== null) {
+  <div class="result-card__pills">
+    @if (scoreSensationalism !== null) {
+      <span class="pill {{ pillClass(scoreSensationalism, false) }}">
+        <span class="pill__label">Senzaționalism</span>
+        <span class="pill__value">{{ fmtScore(scoreSensationalism) }}</span>
+      </span>
+    }
+    @if (scoreCitationQuality !== null) {
+      <span class="pill {{ pillClass(scoreCitationQuality, true) }}">
+        <span class="pill__label">Calitate citare</span>
+        <span class="pill__value">{{ fmtScore(scoreCitationQuality) }}</span>
+      </span>
+    }
+    @if (scoreRhetoricIntensity !== null) {
+      <span class="pill {{ pillClass(scoreRhetoricIntensity, false) }}">
+        <span class="pill__label">Retorică</span>
+        <span class="pill__value">{{ fmtScore(scoreRhetoricIntensity) }}</span>
+      </span>
+    }
+  </div>
+}

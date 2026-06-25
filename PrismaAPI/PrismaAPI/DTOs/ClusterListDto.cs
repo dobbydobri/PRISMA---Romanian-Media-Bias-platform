@@ -23,4 +23,6 @@ public class ClusterListDto
     public bool IsEventCluster { get; set; }
 
     public int? ParentClusterId { get; set; }
+
+    public string? ClusterTitle { get; set; }
 }

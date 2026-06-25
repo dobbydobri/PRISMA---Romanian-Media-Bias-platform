@@ -21,6 +21,10 @@ public class PrismaDbContext : DbContext
 
     public DbSet<ClusterLabel> ClusterLabels => Set<ClusterLabel>();
 
+    public DbSet<ClusterCoverageMetric> ClusterCoverageMetrics => Set<ClusterCoverageMetric>();
+
+    public DbSet<ClusterSummary> ClusterSummaries => Set<ClusterSummary>();
+
     public DbSet<FactCheck> FactChecks => Set<FactCheck>();
 
     public DbSet<FactCheckClusterMap> FactCheckClusterMaps => Set<FactCheckClusterMap>();
@@ -89,10 +93,6 @@ public class PrismaDbContext : DbContext
             entity.Property(a => a.LlmTopic).HasColumnName("llm_topic");
             entity.Property(a => a.LlmScoredAt).HasColumnName("llm_scored_at");
 
-            entity.Property(a => a.PredIsPolitical).HasColumnName("pred_is_political");
-            entity.Property(a => a.PredCoalition).HasColumnName("pred_coalition");
-            entity.Property(a => a.PredEuAxis).HasColumnName("pred_eu_axis");
-            entity.Property(a => a.PredScoredAt).HasColumnName("pred_scored_at");
 
             entity.HasOne(a => a.Outlet)
                   .WithMany(o => o.Articles)
@@ -187,6 +187,48 @@ public class PrismaDbContext : DbContext
             entity.HasOne(cl => cl.ClusterRun)
                   .WithMany(cr => cr.ClusterLabels)
                   .HasForeignKey(cl => cl.ClusterRunId);
+        });
+
+        modelBuilder.Entity<ClusterCoverageMetric>(entity =>
+        {
+            entity.ToTable("cluster_coverage_metrics");
+
+            entity.HasKey(c => new { c.ClusterRunId, c.ClusterId });
+
+            entity.Property(c => c.ClusterRunId).HasColumnName("cluster_run_id");
+            entity.Property(c => c.ClusterId).HasColumnName("cluster_id");
+            entity.Property(c => c.ArticleCount).HasColumnName("article_count");
+            entity.Property(c => c.OutletCount).HasColumnName("outlet_count");
+            entity.Property(c => c.OutletTypeCount).HasColumnName("outlet_type_count");
+            entity.Property(c => c.PopularityScore).HasColumnName("popularity_score");
+            entity.Property(c => c.GapScore).HasColumnName("gap_score");
+            entity.Property(c => c.Category).HasColumnName("category");
+            entity.Property(c => c.CoveringOutlets).HasColumnName("covering_outlets").HasColumnType("jsonb");
+            entity.Property(c => c.MissingOutlets).HasColumnName("missing_outlets").HasColumnType("jsonb");
+            entity.Property(c => c.ComputedAt).HasColumnName("computed_at");
+        });
+
+        modelBuilder.Entity<ClusterSummary>(entity =>
+        {
+            entity.ToTable("cluster_summaries");
+
+            entity.Property(cs => cs.Id).HasColumnName("id");
+            entity.Property(cs => cs.Scope).HasColumnName("scope");
+            entity.Property(cs => cs.ClusterRunId).HasColumnName("cluster_run_id");
+            entity.Property(cs => cs.ClusterId).HasColumnName("cluster_id");
+            entity.Property(cs => cs.SummaryText).HasColumnName("summary_text");
+            entity.Property(cs => cs.KeyPoints).HasColumnName("key_points").HasColumnType("jsonb");
+            entity.Property(cs => cs.SourceArticleIds).HasColumnName("source_article_ids");
+            entity.Property(cs => cs.Model).HasColumnName("model");
+            entity.Property(cs => cs.PromptVersion).HasColumnName("prompt_version");
+            entity.Property(cs => cs.MeanPairwiseCosine).HasColumnName("mean_pairwise_cosine");
+            entity.Property(cs => cs.GenerationMs).HasColumnName("generation_ms");
+            entity.Property(cs => cs.GeneratedAt).HasColumnName("generated_at");
+            entity.Property(cs => cs.ClusterTitle).HasColumnName("cluster_title");
+
+            entity.HasOne(cs => cs.ClusterRun)
+                  .WithMany()
+                  .HasForeignKey(cs => cs.ClusterRunId);
         });
 
         modelBuilder.Entity<FactCheck>(entity =>

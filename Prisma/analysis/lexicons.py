@@ -10,7 +10,8 @@ SENSATIONALIST_KEYWORDS = {
     # Clickbait triggers
     'iată', 'secretul', 'motivul pentru care', 'ce nu știai',
     'asta e', 'nimeni nu', 'toată lumea', 'nu o să crezi',
-    'adevărul despre', 'cum e posibil',
+    'adevărul despre', 'cum e posibil', 'de ce', 'ce se întâmplă',
+    'uite ce', 'nu ai ghici', 'ce a pățit',
     # Urgency markers
     'urgent', 'alertă', 'breaking', 'ultima oră', 'de ultimă oră',
     # Emotional appeals
@@ -26,11 +27,13 @@ ATTRIBUTION_MARKERS = [
     'a afirmat', 'a precizat', 'a subliniat', 'a punctat',
     'a adăugat', 'a completat', 'a confirmat', 'a dezvăluit',
     'a recunoscut', 'a reamintit', 'a explicat', 'a transmis',
-    'a comunicat', 'a susținut',
+    'a comunicat', 'a susținut', 'a arătat', 'a indicat',
+    'a menționat', 'a remarcat',
     # Institutional citation
     'citat de', 'după cum', 'menționează', 'reiese din',
     'potrivit datelor', 'conform statisticilor', 'conform raportului',
     'în declarația', 'într-un comunicat', 'printr-un comunicat',
+    'conform documentului', 'conform studiului',
 ]
 
 VAGUE_SOURCE_MARKERS = [
@@ -38,10 +41,11 @@ VAGUE_SOURCE_MARKERS = [
     'surse', 'surse din', 'persoane din', 'cercuri apropiate',
     'oficiali care', 'persoane care', 'surse diplomatice',
     'surse judiciare', 'surse politice', 'surse apropiate',
+    'din mediul politic', 'din mediul de afaceri',
     # Unverifiable attributions
     'se vehiculează', 'zvonuri', 'informații neconfirmate',
     'ar fi vorba', 'neconfirmat', 'informații neoficiale',
-    'din câte se știe',
+    'din câte se știe', 'conform unor surse neoficiale',
 ]
 
 SPECULATION_MARKERS = [
@@ -54,45 +58,68 @@ SPECULATION_MARKERS = [
 
 
 # ── DISCOURSE REGISTERS: Political vocabulary detection ───────────────────────
+#
+# national_sovereignty removed — handled by transformer sovereignism axis (0.74 F1).
+# eu_integration and eu_criticism expanded — these are now the primary NLP signal
+# for EU orientation, replacing the dropped LLM/transformer eu_orientation axis.
+# institutional_criticism serves as the anti-establishment proxy, replacing the
+# dropped LLM/transformer anti_establishment axis.
 
 DISCOURSE_REGISTERS = {
-    'national_sovereignty': [
-        # Vocabulary emphasising national independence and self-determination
-        'suveranitate', 'suveranitate națională', 'independență',
-        'autodeterminare', 'interes național', 'stat suveran',
-        'identitate națională', 'demnitate națională',
-        'interese străine', 'ingerință', 'amestec extern',
-    ],
-
     'eu_integration': [
-        # Vocabulary emphasising European cooperation and convergence
+        # Vocabulary framing EU/Euro-Atlantic alignment positively
         'integrare europeană', 'valori europene', 'standarde europene',
         'convergență', 'parteneriat european', 'acquis comunitar',
         'comunitate europeană', 'solidaritate europeană',
         'proiect european', 'parcurs european',
+        # Institutional references in positive framing context
+        'familia europeană', 'angajament european', 'vocație europeană',
+        'construcție europeană', 'coeziune europeană',
+        # Specific EU milestones and frameworks
+        'aderare la zona euro', 'absorbția fondurilor',
+        'spațiul schengen', 'mecanismul de cooperare și verificare',
+        # Euro-Atlantic dimension
+        'parteneriat transatlantic', 'alianța nato',
+        'angajament nato', 'flancul estic',
     ],
 
     'eu_criticism': [
-        # Vocabulary critical of EU institutions or policies
+        # Vocabulary framing EU institutions or policies critically
         'birocrați de la bruxelles', 'dictat european',
-        'impunere', 'cedare suveranitate', 'federalizare',
-        'pierderea suveranității', 'comisia impune',
+        'cedare suveranitate', 'federalizare',
+        'pierderea suveranității',
+        # Critical framing of EU relationship 
+        'periferia europei', 'colonie europeană',
+        'reglementare excesivă', 'birocrație europeană',
+        'interferență europeană', 'control european',
+        # Sovereignty loss framing
+        'bruxelles-ul decide', 'impus de bruxelles',
     ],
 
     'institutional_trust': [
         # Vocabulary expressing confidence in state institutions
         'statul de drept', 'independența justiției',
         'instituții democratice', 'separația puterilor',
-        'transparență', 'integritate', 'responsabilizare',
+        'integritate', 'responsabilizare',
         'anticorupție', 'reformă instituțională',
+        'proces echitabil', 'prezumția de nevinovăție',
+        'controlul constituționalității', 'mecanisme de control',
+        'răspundere publică',
     ],
 
     'institutional_criticism': [
-        # Vocabulary critical of state institutions or judicial system
-        'stat paralel', 'abuz', 'dosar politic',
+        # Vocabulary critical of state institutions — anti-establishment proxy
+        'stat paralel', 'abuz instituțional', 'dosar politic',
         'persecuție politică', 'vânătoare de vrăjitoare',
-        'anchetă fabricată', 'politizare', 'captură',
+        'anchetă fabricată', 'politizare', 'captură instituțională',
         'servicii secrete', 'stat profund', 'deep state',
+        # Judicial system distrust
+        'justiție selectivă', 'procuror instrumentalizat',
+        'protocoale secrete', 'interceptări ilegale',
+        'decizie politică', 'condamnare politică',
+        # Intelligence services framing
+        'statul securist', 'moștenirea securității',
+        'ofițeri acoperiți', 'influența serviciilor',
     ],
 
     'traditional_identity': [
@@ -101,14 +128,15 @@ DISCOURSE_REGISTERS = {
         'credință', 'identitate culturală', 'moștenire',
         'neam', 'biserică', 'familie tradițională',
         'rădăcini', 'spiritualitate',
+        'patrimoniu', 'obiceiuri', 'strămoși',
     ],
 
     'modernisation': [
-        # Vocabulary emphasising progress and change
+        # Vocabulary emphasising progress and societal change
         'modernizare', 'reformă', 'digitalizare', 'inovație',
         'progres', 'dezvoltare durabilă', 'tranziție',
         'societate civilă', 'deschidere', 'incluziune',
-        'diversitate',
+        'diversitate', 'transformare digitală',
     ],
 
     'crisis_alarm': [

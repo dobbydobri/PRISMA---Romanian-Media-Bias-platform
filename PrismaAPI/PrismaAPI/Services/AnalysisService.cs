@@ -21,13 +21,13 @@ public class AnalysisService
 
         return await _context.Articles
             .AsNoTracking()
-            .Where(a => a.PredCoalition != null && a.PredEuAxis != null)
+            .Where(a => a.TfGovStanceConf != null && a.TfSovereignismConf != null)
             .GroupBy(a => a.OutletId)
             .Select(g => new
             {
                 OutletId = g.Key,
-                AvgCoalition = g.Average(a => a.PredCoalition!.Value),
-                AvgEuAxis = g.Average(a => a.PredEuAxis!.Value),
+                AvgCoalition = g.Average(a => (double)a.TfGovStanceConf!.Value),
+                AvgEuAxis = g.Average(a => (double)a.TfSovereignismConf!.Value),
                 ArticleCount = g.Count()
             })
             .Join(_context.Outlets.AsNoTracking(),
@@ -79,12 +79,12 @@ public class AnalysisService
 
         var topicCounts = await _context.Articles
             .AsNoTracking()
-            .Where(a => a.LlmTopic != null)
-            .GroupBy(a => new { a.OutletId, a.LlmTopic })
+            .Where(a => a.TfTopic != null)
+            .GroupBy(a => new { a.OutletId, a.TfTopic })
             .Select(g => new
             {
                 g.Key.OutletId,
-                Topic = g.Key.LlmTopic!,
+                Topic = g.Key.TfTopic!,
                 Count = g.Count()
             })
             .ToListAsync();
@@ -126,12 +126,12 @@ public class AnalysisService
 
         var framingCounts = await _context.Articles
             .AsNoTracking()
-            .Where(a => a.LlmFraming != null)
-            .GroupBy(a => new { a.OutletId, a.LlmFraming })
+            .Where(a => a.TfFraming != null)
+            .GroupBy(a => new { a.OutletId, a.TfFraming })
             .Select(g => new
             {
                 g.Key.OutletId,
-                Framing = g.Key.LlmFraming!,
+                Framing = g.Key.TfFraming!,
                 Count = g.Count()
             })
             .ToListAsync();
@@ -230,7 +230,7 @@ public class AnalysisService
 
         var query = _context.Articles
             .AsNoTracking()
-            .Where(a => a.LlmCoalition != null && a.PredCoalition != null);
+            .Where(a => a.LlmCoalition != null && a.TfGovStanceConf != null);
 
         if (outletId.HasValue)
             query = query.Where(a => a.OutletId == outletId.Value);
@@ -247,10 +247,10 @@ public class AnalysisService
                 Title = a.Title,
                 LlmCoalition = a.LlmCoalition,
                 LlmEuAxis = a.LlmEuAxis,
-                PredCoalition = a.PredCoalition,
-                PredEuAxis = a.PredEuAxis,
-                LlmFraming = a.LlmFraming,
-                LlmTopic = a.LlmTopic
+                TfGovStanceConf = a.TfGovStanceConf,
+                TfSovereignismConf = a.TfSovereignismConf,
+                LlmFraming = a.TfFraming,
+                TfTopic = a.TfTopic
             })
             .ToListAsync();
 

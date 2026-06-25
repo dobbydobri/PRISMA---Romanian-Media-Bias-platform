@@ -21,7 +21,9 @@ public class ClusterService
         bool? isEvent,
         int page = 1,
         int pageSize = 20,
-        string sortBy = "articleCount")
+        string sortBy = "articleCount",
+        DateTime? dateFrom = null,
+        DateTime? dateTo = null)
     {
         pageSize = Math.Clamp(pageSize, 1, 100);
         page = Math.Max(1, page);
@@ -32,18 +34,77 @@ public class ClusterService
             "Listing clusters – runId={RunId}, isEvent={IsEvent}, page={Page}, sortBy={SortBy}",
             resolvedRunId, isEvent, page, sortBy);
 
-        var query = _context.ClusterLabels
+        var baseQuery = _context.ClusterLabels
             .AsNoTracking()
             .Where(cl => cl.ClusterRunId == resolvedRunId);
 
         if (isEvent.HasValue)
-            query = query.Where(cl => cl.IsEventCluster == isEvent.Value);
+            baseQuery = baseQuery.Where(cl => cl.IsEventCluster == isEvent.Value);
+
+        if (dateFrom.HasValue)
+        {
+            var dateFromOnly = DateOnly.FromDateTime(dateFrom.Value);
+            baseQuery = baseQuery.Where(cl => cl.DateTo >= dateFromOnly);
+        }
+
+        if (dateTo.HasValue)
+        {
+            var dateToOnly = DateOnly.FromDateTime(dateTo.Value);
+            baseQuery = baseQuery.Where(cl => cl.DateFrom <= dateToOnly);
+        }
+
+        // Filter out clusters that have NO non-excluded articles, since we only take into account non-excluded ones.
+        if (isEvent == true)
+        {
+            baseQuery = baseQuery.Where(cl => _context.Articles.Any(a => a.ClusterRunId == cl.ClusterRunId && a.SubClusterId == cl.ClusterId && a.IsExcluded != true));
+        }
+        else if (isEvent == false)
+        {
+            baseQuery = baseQuery.Where(cl => _context.Articles.Any(a => a.ClusterRunId == cl.ClusterRunId && a.ClusterId == cl.ClusterId && a.IsExcluded != true));
+        }
+        else
+        {
+            baseQuery = baseQuery.Where(cl => _context.Articles.Any(a => a.ClusterRunId == cl.ClusterRunId && 
+                (cl.IsEventCluster ? a.SubClusterId == cl.ClusterId : a.ClusterId == cl.ClusterId) && 
+                a.IsExcluded != true));
+        }
+
+        // GroupJoin with ClusterSummaries to get ClusterTitle
+        var query = baseQuery.GroupJoin(
+            _context.ClusterSummaries.AsNoTracking(),
+            cl => new { cl.ClusterRunId, cl.ClusterId },
+            cs => new { cs.ClusterRunId, cs.ClusterId },
+            (cl, csGroup) => new { Cluster = cl, Summary = csGroup.FirstOrDefault() }
+        );
+
+        var preFilterCount = await query.CountAsync();
+        _logger.LogInformation("Clusters before filter: {PreFilterCount}", preFilterCount);
+
+        if (isEvent == true)
+        {
+            query = query.Where(x => x.Cluster.OutletCount > 1 && x.Summary != null);
+            var postFilterCount = await query.CountAsync();
+            _logger.LogInformation("Clusters after filter (OutletCount > 1 && Summary != null): {PostFilterCount}", postFilterCount);
+        }
 
         query = sortBy.ToLowerInvariant() switch
         {
-            "datefrom" => query.OrderBy(cl => cl.DateFrom),
-            "outletcount" => query.OrderByDescending(cl => cl.OutletCount),
-            _ => query.OrderByDescending(cl => cl.ArticleCount), // "articleCount" default
+            "datefrom" => query.OrderBy(x => x.Cluster.DateFrom),
+            "outletcount" => query.OrderByDescending(x => x.Cluster.OutletCount),
+            "recent" => isEvent == true 
+                ? query.OrderByDescending(x => _context.Articles
+                    .Where(a => a.ClusterRunId == x.Cluster.ClusterRunId && a.SubClusterId == x.Cluster.ClusterId && a.IsExcluded != true)
+                    .Max(a => a.PublishedAt))
+                : (isEvent == false 
+                    ? query.OrderByDescending(x => _context.Articles
+                        .Where(a => a.ClusterRunId == x.Cluster.ClusterRunId && a.ClusterId == x.Cluster.ClusterId && a.IsExcluded != true)
+                        .Max(a => a.PublishedAt))
+                    : query.OrderByDescending(x => _context.Articles
+                        .Where(a => a.ClusterRunId == x.Cluster.ClusterRunId && 
+                                    (x.Cluster.IsEventCluster ? a.SubClusterId == x.Cluster.ClusterId : a.ClusterId == x.Cluster.ClusterId) && 
+                                    a.IsExcluded != true)
+                        .Max(a => a.PublishedAt))),
+            _ => query.OrderByDescending(x => x.Cluster.ArticleCount), // "articleCount" default
         };
 
         var totalCount = await query.CountAsync();
@@ -51,19 +112,20 @@ public class ClusterService
         var items = await query
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(cl => new ClusterListDto
+            .Select(x => new ClusterListDto
             {
-                ClusterId = cl.ClusterId,
-                RunId = cl.ClusterRunId,
-                LabelText = cl.LabelText,
-                TopTfidfTerms = cl.TopTfidfTerms,
-                TopEntities = cl.TopEntities,
-                ArticleCount = cl.ArticleCount,
-                OutletCount = cl.OutletCount,
-                DateFrom = cl.DateFrom,
-                DateTo = cl.DateTo,
-                IsEventCluster = cl.IsEventCluster,
-                ParentClusterId = cl.ParentClusterId,
+                ClusterId = x.Cluster.ClusterId,
+                RunId = x.Cluster.ClusterRunId,
+                LabelText = x.Cluster.LabelText,
+                TopTfidfTerms = x.Cluster.TopTfidfTerms,
+                TopEntities = x.Cluster.TopEntities,
+                ArticleCount = x.Cluster.ArticleCount,
+                OutletCount = x.Cluster.OutletCount,
+                DateFrom = x.Cluster.DateFrom,
+                DateTo = x.Cluster.DateTo,
+                IsEventCluster = x.Cluster.IsEventCluster,
+                ParentClusterId = x.Cluster.ParentClusterId,
+                ClusterTitle = x.Summary != null ? x.Summary.ClusterTitle : null
             })
             .ToListAsync();
 
@@ -92,7 +154,8 @@ public class ClusterService
 
         var articles = await _context.Articles
             .AsNoTracking()
-            .Where(a => a.ClusterRunId == runId && a.ClusterId == clusterId)
+            .Where(a => a.ClusterRunId == runId && 
+                        (label.IsEventCluster ? a.SubClusterId == clusterId : a.ClusterId == clusterId))
             .Join(
                 _context.Outlets.AsNoTracking(),
                 a => a.OutletId,
@@ -105,6 +168,7 @@ public class ClusterService
                 {
                     Id = x.Article.Id,
                     Title = x.Article.Title,
+                    Url = x.Article.Url,
                     OutletName = x.OutletName,
                     PublishedAt = x.Article.PublishedAt,
                     ClusterId = x.Article.ClusterId,
@@ -112,11 +176,10 @@ public class ClusterService
                     ScoreSensationalism = x.Article.ScoreSensationalism,
                     ScoreCitationQuality = x.Article.ScoreCitationQuality,
                     ScoreRhetoricIntensity = x.Article.ScoreRhetoricIntensity,
-                    PredCoalition = x.Article.PredCoalition,
-                    PredEuAxis = x.Article.PredEuAxis,
-                    PredIsPolitical = x.Article.PredIsPolitical,
-                    LlmFraming = x.Article.LlmFraming,
-                    LlmTopic = x.Article.LlmTopic,
+                    TfGovStance = x.Article.TfGovStance,
+                    TfSovereignism = x.Article.TfSovereignism,
+                    TfFraming = x.Article.TfFraming,
+                    TfTopic = x.Article.TfTopic,
                 }
             })
             .ToListAsync();
@@ -171,6 +234,44 @@ public class ClusterService
             ParentClusterId = label.ParentClusterId,
             ArticlesByOutlet = articlesByOutlet,
             LinkedFactChecks = factChecks,
+        };
+    }
+
+    public async Task<ClusterSummaryDto?> GetSummaryAsync(int runId, int clusterId)
+    {
+        _logger.LogInformation(
+            "Fetching cluster summary – runId={RunId}, clusterId={ClusterId}",
+            runId, clusterId);
+
+        var summary = await _context.ClusterSummaries
+            .AsNoTracking()
+            .FirstOrDefaultAsync(cs => cs.ClusterRunId == runId && cs.ClusterId == clusterId);
+
+        if (summary is null)
+            return null;
+
+        var keyPoints = new List<string>();
+        if (!string.IsNullOrWhiteSpace(summary.KeyPoints))
+        {
+            try
+            {
+                var parsed = System.Text.Json.JsonSerializer.Deserialize<List<string>>(summary.KeyPoints);
+                if (parsed != null)
+                {
+                    keyPoints = parsed;
+                }
+            }
+            catch (System.Text.Json.JsonException ex)
+            {
+                _logger.LogWarning(ex, "Failed to parse KeyPoints JSON for runId={RunId}, clusterId={ClusterId}. Raw value: {RawValue}", runId, clusterId, summary.KeyPoints);
+            }
+        }
+
+        return new ClusterSummaryDto
+        {
+            ClusterTitle = summary.ClusterTitle,
+            NeutralSummary = summary.SummaryText,
+            KeyPoints = keyPoints
         };
     }
 

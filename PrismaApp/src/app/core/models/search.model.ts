@@ -11,6 +11,7 @@ export interface SearchFilters {
   date_from?: string; // ISO date string: "YYYY-MM-DD"
   date_to?: string;
   is_fact_check?: boolean;
+  topic?: string;
 }
 
 // ── Response — snake_case matches API JSON wire format exactly ────────────────

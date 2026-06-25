@@ -27,6 +27,13 @@
 
   // ── Title ────────────────────────────────────────────────────────
 
+  &__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: $space-3;
+  }
+
   &__title {
     font-size: $font-size-h4;
     font-weight: $weight-semibold;
@@ -86,5 +93,10 @@
   &__meta-divider {
     color: $color-text-tertiary;
     margin: 0 $space-1;
+  }
+
+  &__meta-value--highlight {
+    font-weight: $weight-semibold;
+    color: $color-text-primary;
   }
 }

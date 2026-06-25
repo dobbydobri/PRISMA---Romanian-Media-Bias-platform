@@ -25,19 +25,13 @@ public class ArticleDetailDto
 
     public double? ScoreRhetoricIntensity { get; set; }
 
-    public double? PredCoalition { get; set; }
+    public string? TfGovStance { get; set; }
 
-    public double? PredEuAxis { get; set; }
+    public string? TfSovereignism { get; set; }
 
-    public int? PredIsPolitical { get; set; }
+    public string? TfFraming { get; set; }
 
-    public double? LlmCoalition { get; set; }
-
-    public double? LlmEuAxis { get; set; }
-
-    public string? LlmFraming { get; set; }
-
-    public string? LlmTopic { get; set; }
+    public string? TfTopic { get; set; }
 
 
     public int? ClusterId { get; set; }

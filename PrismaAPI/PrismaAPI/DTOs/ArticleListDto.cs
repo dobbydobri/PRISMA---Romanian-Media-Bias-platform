@@ -6,6 +6,8 @@ public class ArticleListDto
 
     public string Title { get; set; } = string.Empty;
 
+    public string? Url { get; set; }
+
     public string OutletName { get; set; } = string.Empty;
 
     public DateTime? PublishedAt { get; set; }
@@ -20,13 +22,11 @@ public class ArticleListDto
 
     public double? ScoreRhetoricIntensity { get; set; }
 
-    public double? PredCoalition { get; set; }
+    public string? TfGovStance { get; set; }
 
-    public double? PredEuAxis { get; set; }
+    public string? TfSovereignism { get; set; }
 
-    public int? PredIsPolitical { get; set; }
+    public string? TfFraming { get; set; }
 
-    public string? LlmFraming { get; set; }
-
-    public string? LlmTopic { get; set; }
+    public string? TfTopic { get; set; }
 }

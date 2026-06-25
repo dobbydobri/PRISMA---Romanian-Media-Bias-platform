@@ -105,6 +105,7 @@ def process_batch(cursor, conn):
         FROM articles
         WHERE score_sensationalism IS NULL
           AND content_text IS NOT NULL
+          AND NOT COALESCE(is_excluded, false)
         ORDER BY id
         LIMIT %s
     """, (BATCH_SIZE,))

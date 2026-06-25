@@ -26,12 +26,16 @@ def normalize_unicode(text: str) -> str:
     return text
 
 
+
+
 # ── Pass 2 — Override table (safety net for lemmatizer failures) ──────────────
 
 _LEMMA_OVERRIDES: dict[str, str] = {
-    # Add entries here after first run inspection.
-    # Example: if spaCy produces "româniei" instead of "România":
-    # "româniei": "România",
+    "stat unit": "Statele Unite",
+    "uniune european": "Uniunea Europeană",
+    "comisie european": "Comisia Europeană",
+    "iranului": "Iran",
+    "zelenski": "Volodimir Zelenski",
 }
 
 
@@ -49,6 +53,9 @@ _SYNONYM_TABLE: dict[str, str] = {
     "ue": "Uniunea Europeană",
     "uniunea europeană": "Uniunea Europeană",
     "uniunii europene": "Uniunea Europeană",
+
+    "iranului": "Iran",
+    "iranul": "Iran",
 
     "sua": "Statele Unite",
     "statele unite": "Statele Unite",
@@ -99,7 +106,13 @@ _SYNONYM_TABLE: dict[str, str] = {
     "serviciul de telecomunicații speciale": "STS",
     "inspectoratul general al poliției române": "IGPR",
 
-    "organizația tratatului atlanticului de nord": "NATO"
+    "organizația tratatului atlanticului de nord": "NATO",
+    "north atlantic treaty organization": "NATO",
+    "partidul national liberal": "PNL",       # without diacritics variant
+    "federation internationale de football association": "FIFA",
+    "maniunea europeana": "Uniunea Europeană", # corruption variant
+    "statele unite ale americii": "Statele Unite",  # already present
+    "uniunea europeana": "Uniunea Europeană", 
 }
 
 
@@ -330,6 +343,7 @@ def normalize_entity(
         return ''
 
     result = normalize_unicode(text)
+    result = result.replace('_', ' ').strip()
 
     synonym_result = normalize_synonym(result)
     if synonym_result != result:

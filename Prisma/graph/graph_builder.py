@@ -15,7 +15,7 @@ DB_URL = DATABASE_URL
 MIN_RAW_COMENTIONS = int(os.getenv("MIN_RAW_COMENTIONS", "5"))
 MIN_PMI            = float(os.getenv("MIN_PMI", "0.0"))
 
-BYLINE_ENTROPY_THRESHOLD = float(os.getenv("BYLINE_ENTROPY_THRESHOLD", "0.5"))
+BYLINE_ENTROPY_THRESHOLD = float(os.getenv("BYLINE_ENTROPY_THRESHOLD", "0.3"))
 
 ALLOWED_LABELS = {"PERSON", "ORGANIZATION", "GPE", "LOC", "EVENT"}
 
@@ -26,6 +26,17 @@ _WIRE_SERVICE_BLACKLIST: frozenset[str] = frozenset({
     "associated press",
     "mediafax",
     "agerpres",
+})
+_KNOWN_BYLINES: frozenset[str] = frozenset({
+    "simonă aruștei",
+    "mihai țenea",
+    "andreea preda",
+    "alexandru cojocaru",
+    "ady ivașcu",
+    "vlad constantinescu",
+    "ionuț mareș",
+    "răzvan chiruță",
+    "florin ștefan",
 })
 
 logging.basicConfig(
@@ -133,6 +144,8 @@ def load_entity_data(conn):
             continue
 
         if canonical.lower() in _WIRE_SERVICE_BLACKLIST:
+            continue
+        if canonical.lower() in _KNOWN_BYLINES:
             continue
 
         entity_articles[canonical].add(article_id)

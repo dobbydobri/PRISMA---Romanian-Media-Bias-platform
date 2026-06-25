@@ -10,11 +10,11 @@ public class LlmVsXgboostDto
 
     public double? LlmEuAxis { get; set; }
 
-    public double? PredCoalition { get; set; }
+    public double? TfGovStanceConf { get; set; }
 
-    public double? PredEuAxis { get; set; }
+    public double? TfSovereignismConf { get; set; }
 
     public string? LlmFraming { get; set; }
 
-    public string? LlmTopic { get; set; }
+    public string? TfTopic { get; set; }
 }

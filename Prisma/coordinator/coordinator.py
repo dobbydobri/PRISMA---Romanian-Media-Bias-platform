@@ -22,7 +22,8 @@ DB_URL = DATABASE_URL
 
 OLLAMA_HOST = OLLAMA_BASE_URL
 
-GPU_SERVICES = ["embedder_service", "full_text_ner", "query_embedder"]
+BACKGROUND_GPU_SERVICES = ["embedder_service", "full_text_ner"]           # stopped for transformer inference
+ALL_GPU_SERVICES        = ["embedder_service", "full_text_ner", "query_embedder"]  # stopped for Ollama
 
 # Schedule intervals
 FAST_CYCLE_HOURS      = 3       
@@ -44,7 +45,6 @@ SCRIPTS = {
     "event_summaries":       "summaries/generate_event_summaries.py",
 
     "coverage_metrics":      "coverage/build_coverage_metrics.py",
-    "event_diffusion":       "diffusion/build_event_diffusion.py",
 
     "graph_builder":         "graph/graph_builder.py",
 }
@@ -52,9 +52,7 @@ SCRIPTS = {
 # Which scripts are placeholders (not yet implemented)
 PLACEHOLDERS = {
     "nlp_pipeline",
-    "infer_transformer",
     "coverage_metrics",
-    "event_diffusion",
 }
 
 logging.basicConfig(
@@ -116,7 +114,9 @@ def count_unscored_articles() -> int:
                 SELECT COUNT(*)
                 FROM articles
                 WHERE embedding IS NOT NULL
-                  AND pred_scored_at IS NULL
+                  AND content_text IS NOT NULL
+                  AND LENGTH(content_text) >= 200
+                  AND tf_gov_stance IS NULL
             """)
             count = cur.fetchone()[0]
         conn.close()
@@ -183,7 +183,7 @@ def run_script(name: str, dry_run: bool = False) -> bool:
             cwd=str(script_path.parent),
             capture_output=False,
             timeout=7200,  # 2h max per script
-            env={**os.environ, "DATABASE_URL": DB_URL, "OLLAMA_HOST": OLLAMA_HOST},
+            env={**os.environ, "DATABASE_URL": DB_URL, "OLLAMA_BASE_URL": OLLAMA_HOST},
         )
         if result.returncode != 0:
             log.error("  [FAIL] %s exited with code %d", name, result.returncode)
@@ -229,7 +229,13 @@ def run_fast_cycle(dry_run: bool = False):
         return
 
     run_script("nlp_pipeline", dry_run)
+
+    docker_compose("stop", *BACKGROUND_GPU_SERVICES, dry_run=dry_run)
+    time.sleep(5)
+
     run_script("infer_transformer", dry_run)
+
+    docker_compose("start", *BACKGROUND_GPU_SERVICES, dry_run=dry_run)
 
 
 def run_cluster_cycle(dry_run: bool = False):
@@ -247,7 +253,7 @@ def run_cluster_cycle(dry_run: bool = False):
 
     if unsummarized > 0:
         log.info("--- Stage 3: LLM Summaries (GPU swap) ---")
-        docker_compose("stop", *GPU_SERVICES, dry_run=dry_run)
+        docker_compose("stop", *ALL_GPU_SERVICES, dry_run=dry_run)
         time.sleep(10)
 
         summary_ok = run_script("event_summaries", dry_run)
@@ -256,7 +262,7 @@ def run_cluster_cycle(dry_run: bool = False):
         if not dry_run:
             time.sleep(60)
 
-        docker_compose("start", *GPU_SERVICES, dry_run=dry_run)
+        docker_compose("start", *ALL_GPU_SERVICES, dry_run=dry_run)
 
         if not summary_ok:
             log.warning("Summaries failed — GPU services restarted, continuing.")

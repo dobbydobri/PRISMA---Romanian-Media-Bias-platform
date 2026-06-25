@@ -1,0 +1,102 @@
+<div class="topic-detail">
+  <header class="topic-detail__header">
+    <a routerLink="/topics" class="topic-detail__back-link">
+      <mat-icon>arrow_back</mat-icon>
+      Subiecte
+    </a>
+  </header>
+
+  @if (loading()) {
+    <div class="topic-detail__loading">
+      <div class="skeleton-summary"></div>
+      <div class="skeleton-articles"></div>
+    </div>
+  } @else if (error()) {
+    <app-empty-state
+      icon="error_outline"
+      title="Eroare"
+      [description]="error()!"
+    ></app-empty-state>
+  } @else {
+    <div class="topic-detail__content">
+      
+      <!-- Summary Section -->
+      <section class="topic-summary">
+        <h2 class="topic-summary__title">
+          {{ summary()?.cluster_title || detail()?.label_text }}
+        </h2>
+
+        <div class="topic-summary__card">
+          <div class="topic-summary__card-header">
+            <h3>Rezumatul Neutru</h3>
+          </div>
+          
+          @if (hasSummary()) {
+            <div class="topic-summary__card-body">
+              @if (summary()?.neutral_summary) {
+                <p class="topic-summary__text">{{ summary()!.neutral_summary }}</p>
+              }
+              
+              @if (summary()!.key_points?.length) {
+                <ul class="topic-summary__key-points">
+                  @for (point of summary()!.key_points; track $index) {
+                    <li>{{ point }}</li>
+                  }
+                </ul>
+              }
+            </div>
+          } @else {
+            <div class="topic-summary__empty">
+              <mat-icon>info</mat-icon>
+              <p>Rezumatul nu este disponibil pentru acest subiect.</p>
+            </div>
+          }
+        </div>
+      </section>
+
+      <!-- Articles Section -->
+      <section class="topic-articles">
+        <h3 class="topic-articles__title">Articole pe sursă</h3>
+
+        @for (outletGroup of articlesByOutlet() | keyvalue; track outletGroup.key) {
+          <div class="outlet-group">
+            <h4 class="outlet-group__name">{{ outletGroup.key }}</h4>
+            
+            <div class="outlet-group__articles">
+              @for (article of outletGroup.value; track article.id) {
+                <article class="outlet-article-card">
+                  <div class="outlet-article-card__meta">
+                    @if (article.published_at) {
+                      <span class="outlet-article-card__date">{{ formatDate(article.published_at) }}</span>
+                    }
+                  </div>
+                  
+                  @if (article.url) {
+                    <a class="outlet-article-card__title" [href]="article.url" target="_blank" rel="noopener noreferrer">
+                      {{ article.title }}
+                    </a>
+                  } @else {
+                    <span class="outlet-article-card__title outlet-article-card__title--no-link">
+                      {{ article.title }}
+                    </span>
+                  }
+                  
+                  <div class="outlet-article-card__scores">
+                    <app-article-scores
+                      [scoreSensationalism]="article.score_sensationalism"
+                      [scoreCitationQuality]="article.score_citation_quality"
+                      [scoreRhetoricIntensity]="article.score_rhetoric_intensity"
+                    ></app-article-scores>
+                  </div>
+                </article>
+              }
+            </div>
+          </div>
+        } @empty {
+          <p class="topic-articles__empty">Nu există articole pentru acest subiect.</p>
+        }
+      </section>
+
+    </div>
+  }
+</div>

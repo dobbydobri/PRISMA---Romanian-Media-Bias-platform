@@ -21,28 +21,11 @@
   }
 
   
-  @if (article.score_sensationalism !== null || article.score_citation_quality !== null || article.score_rhetoric_intensity !== null) {
-    <div class="result-card__pills">
-      @if (article.score_sensationalism !== null) {
-        <span class="pill {{ pillClass(article.score_sensationalism, false) }}">
-          <span class="pill__label">Senzaționalism</span>
-          <span class="pill__value">{{ fmtScore(article.score_sensationalism) }}</span>
-        </span>
-      }
-      @if (article.score_citation_quality !== null) {
-        <span class="pill {{ pillClass(article.score_citation_quality, true) }}">
-          <span class="pill__label">Calitate citare</span>
-          <span class="pill__value">{{ fmtScore(article.score_citation_quality) }}</span>
-        </span>
-      }
-      @if (article.score_rhetoric_intensity !== null) {
-        <span class="pill {{ pillClass(article.score_rhetoric_intensity, false) }}">
-          <span class="pill__label">Retorică</span>
-          <span class="pill__value">{{ fmtScore(article.score_rhetoric_intensity) }}</span>
-        </span>
-      }
-    </div>
-  }
+  <app-article-scores
+    [scoreSensationalism]="article.score_sensationalism"
+    [scoreCitationQuality]="article.score_citation_quality"
+    [scoreRhetoricIntensity]="article.score_rhetoric_intensity"
+  ></app-article-scores>
 
   
   <div class="result-card__footer">
@@ -50,13 +33,13 @@
     
     <div class="result-card__relevance">
       @if (article.cos_sim !== null) {
-        <span class="result-card__relevance-label">Relevanță</span>
+        <span class="result-card__relevance-label">{{ matchType }}</span>
         <div class="result-card__bar-track" aria-label="Relevanță {{ relevanceLabel }}" role="meter" aria-valuenow="{{ article.cos_sim }}" aria-valuemin="0" aria-valuemax="1">
           <div class="result-card__bar-fill" [style.width]="relevanceWidth"></div>
         </div>
         <span class="result-card__relevance-value">{{ relevanceLabel }}</span>
       } @else {
-        <span class="result-card__lexical">Potrivire lexicală</span>
+        <span class="result-card__lexical">{{ matchType }}</span>
       }
     </div>
 

@@ -22,4 +22,6 @@ public class SearchFilters
     public DateOnly? DateTo { get; set; }
 
     public bool? IsFactCheck { get; set; }
+
+    public string? Topic { get; set; }
 }

@@ -15,6 +15,7 @@ services:
   postgres_db:
     image: pgvector/pgvector:pg16
     container_name: prisma_postgres
+    shm_size: 2gb
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
@@ -287,6 +288,30 @@ services:
       timeout: 10s
       retries: 3
       start_period: 120s
+
+  prisma-graph-service:
+    build: ./Prisma/graph_service
+    container_name: prisma-graph-service
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@postgres_db:5432/${DB_NAME}
+      GRAPH_BACKBONE_ALPHA: "0.15"
+      HUB_BLACKLIST_PERCENTILE: "0.999"
+      MAX_HOPS: "3"
+      K_PATHS: "5"
+      MIN_PATH_RAW: "15"
+      QUERY_PMI_FLOOR: "0.5"
+    ports:
+      - "8082:8082"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
 volumes:
   pgdata:

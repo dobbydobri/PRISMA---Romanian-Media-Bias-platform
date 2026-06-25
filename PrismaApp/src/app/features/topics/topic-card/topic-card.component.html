@@ -5,10 +5,16 @@
   (keydown.space)="onClick()"
   tabindex="0"
   role="button"
-  [attr.aria-label]="'Deschide subiectul: ' + cluster().labelText"
+  [attr.aria-label]="'Deschide subiectul: ' + (cluster().cluster_title || cluster().label_text)"
 >
-  
-  <h4 class="topic-card__title">{{ cluster().labelText }}</h4>
+  <div class="topic-card__header">
+    <h4 class="topic-card__title">{{ cluster().cluster_title || cluster().label_text }}</h4>
+    <app-factcheck-badge 
+      [clusterRunId]="cluster().run_id" 
+      [clusterId]="cluster().cluster_id"
+      (click)="$event.stopPropagation()">
+    </app-factcheck-badge>
+  </div>
 
   
   @if (topTerms.length > 0) {
@@ -22,13 +28,13 @@
   
   <div class="topic-card__meta">
     <span class="topic-card__meta-item">
-      <span class="topic-card__meta-count">{{ cluster().articleCount }}</span>
-      {{ cluster().articleCount === 1 ? 'articol' : 'articole' }}
+      <span class="topic-card__meta-count">{{ cluster().article_count }}</span>
+      {{ cluster().article_count === 1 ? 'articol' : 'articole' }}
     </span>
     <span class="topic-card__meta-divider" aria-hidden="true">·</span>
     <span class="topic-card__meta-item">
-      <span class="topic-card__meta-count">{{ cluster().outletCount }}</span>
-      {{ cluster().outletCount === 1 ? 'sursă' : 'surse' }}
+      Diversitate surse: <span class="topic-card__meta-value--highlight">{{ perspectiveDiversity }}</span> 
+      ({{ cluster().outlet_count }} surse)
     </span>
   </div>
 </article>

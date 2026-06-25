@@ -27,11 +27,11 @@ public class OutletService
             {
                 OutletId = g.Key,
                 TotalArticles = g.Count(),
-                PoliticalArticles = g.Count(a => a.PredIsPolitical == 1),
-                AvgCoalition = g.Where(a => a.PredCoalition != null)
-                                 .Average(a => (double?)a.PredCoalition),
-                AvgEuAxis = g.Where(a => a.PredEuAxis != null)
-                              .Average(a => (double?)a.PredEuAxis),
+                PoliticalArticles = 0, // Not available anymore
+                AvgCoalition = g.Where(a => a.TfGovStanceConf != null)
+                                 .Average(a => (double?)a.TfGovStanceConf),
+                AvgEuAxis = g.Where(a => a.TfSovereignismConf != null)
+                              .Average(a => (double?)a.TfSovereignismConf),
                 AvgSensationalism = g.Where(a => a.ScoreSensationalism != null)
                                       .Average(a => (double?)a.ScoreSensationalism),
                 AvgCitationQuality = g.Where(a => a.ScoreCitationQuality != null)
@@ -43,9 +43,9 @@ public class OutletService
 
         var dominantTopics = await _context.Articles
             .AsNoTracking()
-            .Where(a => a.LlmTopic != null)
-            .GroupBy(a => new { a.OutletId, a.LlmTopic })
-            .Select(g => new { g.Key.OutletId, Topic = g.Key.LlmTopic, Count = g.Count() })
+            .Where(a => a.TfTopic != null)
+            .GroupBy(a => new { a.OutletId, a.TfTopic })
+            .Select(g => new { g.Key.OutletId, Topic = g.Key.TfTopic, Count = g.Count() })
             .ToListAsync();
 
         var topicByOutlet = dominantTopics
@@ -56,9 +56,9 @@ public class OutletService
 
         var dominantFramings = await _context.Articles
             .AsNoTracking()
-            .Where(a => a.LlmFraming != null)
-            .GroupBy(a => new { a.OutletId, a.LlmFraming })
-            .Select(g => new { g.Key.OutletId, Framing = g.Key.LlmFraming, Count = g.Count() })
+            .Where(a => a.TfFraming != null)
+            .GroupBy(a => new { a.OutletId, a.TfFraming })
+            .Select(g => new { g.Key.OutletId, Framing = g.Key.TfFraming, Count = g.Count() })
             .ToListAsync();
 
         var framingByOutlet = dominantFramings

@@ -1,9 +1,9 @@
 using System.Net.Http.Json;
 using Microsoft.Extensions.Options;
 using Npgsql;
+using Pgvector;
 using PrismaAPI.Configuration;
 using PrismaAPI.DTOs.Search;
-using PrismaAPI.Extensions;
 
 namespace PrismaAPI.Services;
 
@@ -39,7 +39,8 @@ public class SearchService : ISearchService
 
         var articles = await ExecuteHybridSearchAsync(queryVector, query, request, ct);
 
-        return BuildResponse(query, articles);
+        int topK = Math.Clamp(request.TopK ?? opts.DefaultTopK, 1, opts.MaxTopK);
+        return BuildResponse(query, articles, opts, topK);
     }
 
 
@@ -86,55 +87,53 @@ public class SearchService : ISearchService
         CancellationToken ct)
     {
         var opts = _options.Value;
-        int topK = Math.Clamp(request.TopK ?? opts.DefaultTopK, 1, opts.MaxTopK);
 
         var (filterSql, filterParams) = BuildFilterClauses(request.Filters);
 
-        // (like `NOT is_templated`) remove a large fraction of the index neighborhood.
-        //
         string sql = $"""
             WITH
-            params AS (
+            query AS (
                 SELECT
                     @qvec::vector(1024)                              AS qvec,
-                    websearch_to_tsquery('romanian', @qtext)         AS qts,
-                    @candidates                                      AS candidates,
-                    @rrf_k                                           AS rrf_k,
-                    @cos_sim_floor                                   AS cos_sim_floor
+                    websearch_to_tsquery('romanian', @qtext)         AS qts
             ),
             dense_topk AS (
                 SELECT a.id,
-                       1 - (a.embedding <=> p.qvec)  AS cos_sim,
-                       a.embedding <=> p.qvec         AS dist
-                FROM   articles a, params p
+                       1 - (a.embedding <=> q.qvec) AS cos_sim
+                FROM   articles a, query q
                 WHERE  a.embedding IS NOT NULL
                   AND  NOT a.is_templated
+                  AND  NOT a.is_excluded
+                  AND  a.fts @@ q.qts          -- title OR body must match lexically
                   {filterSql}
-                ORDER  BY a.embedding <=> p.qvec
+                ORDER  BY a.embedding <=> q.qvec
                 LIMIT  @candidates
             ),
             dense AS (
                 SELECT id,
                        cos_sim,
                        ROW_NUMBER() OVER (ORDER BY cos_sim DESC) AS rnk
-                FROM   dense_topk, params
-                WHERE  cos_sim >= cos_sim_floor
+                FROM   dense_topk
+                WHERE  cos_sim >= @cos_sim_floor
             ),
             sparse AS (
                 SELECT a.id,
-                       ts_rank_cd(a.fts, p.qts) AS ts_score,
-                       ROW_NUMBER() OVER (ORDER BY ts_rank_cd(a.fts, p.qts) DESC) AS rnk
-                FROM   articles a, params p
-                WHERE  a.fts @@ p.qts
+                       ts_rank_cd(a.fts, q.qts, 4) AS ts_score,
+                       ROW_NUMBER() OVER (
+                           ORDER BY ts_rank_cd(a.fts, q.qts, 4) DESC
+                       ) AS rnk
+                FROM   articles a, query q
+                WHERE  a.fts @@ q.qts
                   AND  NOT a.is_templated
+                  AND  NOT a.is_excluded
                   {filterSql}
-                ORDER  BY ts_rank_cd(a.fts, p.qts) DESC
+                ORDER  BY ts_rank_cd(a.fts, q.qts, 4) DESC
                 LIMIT  @candidates
             ),
             fused AS (
-                SELECT COALESCE(d.id, s.id)                                         AS id,
-                       COALESCE(1.0 / ((SELECT rrf_k FROM params) + d.rnk), 0)
-                     + COALESCE(1.0 / ((SELECT rrf_k FROM params) + s.rnk), 0)     AS rrf_score,
+                SELECT COALESCE(d.id, s.id)                     AS id,
+                       COALESCE(1.0 / (@rrf_k + d.rnk), 0)
+                     + COALESCE(1.0 / (@rrf_k + s.rnk), 0)     AS rrf_score,
                        d.rnk     AS dense_rank,
                        s.rnk     AS sparse_rank,
                        d.cos_sim,
@@ -162,7 +161,7 @@ public class SearchService : ISearchService
             JOIN   articles a ON a.id = f.id
             JOIN   outlets  o ON o.id = a.outlet_id
             ORDER  BY f.rrf_score DESC
-            LIMIT  @top_k;
+            LIMIT  @pool_size;
             """;
 
         await using var conn = await _dataSource.OpenConnectionAsync(ct);
@@ -175,12 +174,12 @@ public class SearchService : ISearchService
 
         await using var cmd = new NpgsqlCommand(sql, conn);
 
-        cmd.Parameters.AddWithValue("@qvec", queryVector.ToVectorString());
+        cmd.Parameters.AddWithValue("@qvec", new Vector(queryVector));
         cmd.Parameters.AddWithValue("@qtext", queryText);
         cmd.Parameters.AddWithValue("@candidates", opts.CandidatesPerLeg);
         cmd.Parameters.AddWithValue("@rrf_k", opts.RrfK);
         cmd.Parameters.AddWithValue("@cos_sim_floor", opts.CosSimFloor);
-        cmd.Parameters.AddWithValue("@top_k", topK);
+        cmd.Parameters.AddWithValue("@pool_size", opts.CandidatesPerLeg);
 
         foreach (var (name, value) in filterParams)
             cmd.Parameters.AddWithValue(name, value);
@@ -251,12 +250,37 @@ public class SearchService : ISearchService
                 clauses.Add("AND a.outlet_id NOT IN (3, 6)");
         }
 
+        if (!string.IsNullOrWhiteSpace(filters.Topic))
+        {
+            clauses.Add("AND a.llm_topic = @topic");
+            parameters.Add(("@topic", filters.Topic));
+        }
+
         return (string.Join("\n                  ", clauses), parameters);
     }
 
 
-    private static SearchResponse BuildResponse(string query, List<ArticleSearchResult> articles)
+    private static SearchResponse BuildResponse(
+        string query,
+        List<ArticleSearchResult> articles,
+        SearchOptions opts,
+        int topK)
     {
+        if (articles.Count > 3)
+        {
+            double baselineScore = articles[2].RrfScore;
+            double floor = baselineScore * opts.ScoreRetainRatio;
+            
+            var top3 = articles.Take(3);
+            var tail = articles.Skip(3).TakeWhile(a => a.RrfScore >= floor);
+            articles = top3.Concat(tail).ToList();
+        }
+
+        if (articles.Count > topK)
+        {
+            articles = articles.Take(topK).ToList();
+        }
+
         int agreementCount = articles.Count(a => a.DenseRank.HasValue && a.SparseRank.HasValue);
 
         double topRrfScore = articles.Count > 0 ? articles[0].RrfScore : 0.0;

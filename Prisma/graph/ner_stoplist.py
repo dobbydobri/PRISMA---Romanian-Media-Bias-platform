@@ -72,6 +72,12 @@ _NER_STOPWORDS: set[str] = {
     "foto",
     "copyright",
     "toate drepturile rezervate",
+    "invitație",
+    "invitatie",
+    "astrele",
+    "horoscop",
+    "vremea",
+    "meteo",
 }
 
 
@@ -88,6 +94,8 @@ def is_ner_stopword(entity_text: str, entity_label: str) -> bool:
     normalized = entity_text.strip().lower()
 
     if normalized in _NER_STOPWORDS:
+        return True
+    if '.ro' in normalized or '.com' in normalized or '.net' in normalized:
         return True
 
     return False
