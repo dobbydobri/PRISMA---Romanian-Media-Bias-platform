@@ -1,19 +1,3 @@
-"""
-PRISMA v4 LLM Labeling Script
--------------------------------
-Three axes, single-task prompts, voting mechanism:
-  - register:      all articles with valid llm_topic (except sports)
-  - entity_stance: political articles, non-fact-checker outlets
-  - eu_orientation: political articles passing EU keyword filter
-
-Voting logic:
-  - 2 independent runs. If they agree → label saved, confidence = high.
-  - If they disagree → 3rd run. Majority of 2 wins, confidence = low.
-  - If all 3 disagree → article skipped on that axis (no label written).
-
-Register axis: no 3rd run on disagreement → default to 'informativ', confidence = low.
-"""
-
 import argparse
 import json
 import logging
@@ -56,6 +40,16 @@ EU_KEYWORDS = [
 
 EU_TITLE_KEYWORDS = ['ue', 'nato', 'bruxelles', 'european', 'europa', 'schengen']
 
+FACTCHECK_TITLE_PREFIXES = (
+    'fals |', 'adevărat |', 'parțial adevărat |', 'context lipsă |',
+    'fals:', 'adevărat:', 'parțial adevărat:', 'context lipsă:',
+)
+
+
+def is_factcheck_article(title: str) -> bool:
+    """Returns True if the title matches a known fact-check verdict format."""
+    return (title or '').lower().strip().startswith(FACTCHECK_TITLE_PREFIXES)
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
@@ -78,7 +72,9 @@ INFORMATIV — Standard news reporting. The journalist reports facts, quotes sou
 
 OPINIE — The journalist expresses personal views or takes a clear position. Uses evaluative language, strong adjectives, or first-person voice. Often has a named columnist. Example: "Este inadmisibil ca guvernul să..." or "Trebuie să recunoaștem că..."
 
-INVESTIGATIV — The journalist discovered NEW information through documents, data, leaked sources, or systematic verification. Presents original evidence. Includes fact-checking articles that verify claims. Example: "Am obținut documente care arată că..." or "FALS | Afirmația lui X despre Y"
+INVESTIGATIV — Two types qualify:
+(a) Original investigation: the journalist discovered new information through documents, data analysis, leaked sources, or verification work. Example: "Am obținut documente care arată că..." or "Investigație exclusivă:"
+(b) Fact-checking: the article verifies a specific public claim using primary sources, official data, or expert consultation, and delivers a verdict. Signals: title starts with "FALS |", "ADEVĂRAT |", "PARȚIAL ADEVĂRAT |", "CONTEXT LIPSĂ |", or the article opens by stating a claim and then systematically verifies or refutes it with evidence.
 
 PROMOTIONAL — Reads like a press release. Only one source quoted, no critical voices, achievements presented without scrutiny. Often announces a project, budget, or event using the institution's own language. Example: "Primăria a anunțat un buget record, construit pe promisiunea continuării investițiilor..."
 
@@ -99,17 +95,23 @@ Identify the ONE political actor (person, party, institution, or organization) t
 If the article is not about any political actor, write "none" and stop.
 
 STEP 2 — How does the article frame this actor?
-Focus on the journalist's editorial choices, not the events described.
+Focus on the journalist's editorial choices: word choice, which sources are quoted, what is emphasized or omitted.
 
-CRITIC — negative framing: loaded words, critical sources foregrounded, failures or scandals emphasized
-FAVORABIL — positive framing: achievements highlighted, supportive tone, no critical voices
-NEUTRU — balanced or purely factual: both sides present, or no editorial lean visible
+CRITIC — negative framing: loaded or dismissive language, critical sources dominate, failures or scandals foregrounded, government or actor portrayed as incompetent or corrupt
+FAVORABIL — positive framing: achievements and benefits highlighted, supportive or celebratory tone, critical voices absent or marginalized
+NEUTRU — the article presents multiple perspectives with no dominant lean, OR reports events factually without editorial color (wire-service style, press conference summary, electoral procedure report)
 
-Do NOT default to NEUTRU. If any editorial lean exists, pick CRITIC or FAVORABIL.
+Use NEUTRU when:
+- Both supportive and critical voices are genuinely present
+- The article is a factual summary with no adjectives revealing editorial position
+- The journalist's voice is absent — only facts and direct quotes
+
+Use CRITIC or FAVORABIL when the journalist's word choices or source selection clearly push in one direction, even subtly.
 
 STEP 3 — Is the stance visible or hidden?
 EXPLICIT — overt loaded language, sarcasm, or evaluative adjectives ("tupeu", "scandalos", "excelent")
 IMPLICIT — bias through source selection, emphasis, or omission rather than language
+If stance is NEUTRU, write "none" for intensity.
 
 Respond with ONLY valid JSON:
 {{"entity": "<name or none>", "stance": "<critic/favorabil/neutru/none>", "intensity": "<explicit/implicit/none>", "signal_phrase": "<3-8 words from the article showing the stance, or none>", "rationale": "<one sentence or none>"}}
@@ -119,20 +121,25 @@ Text: {content}\
 """
 
 EU_PROMPT = """\
-You are classifying how a Romanian news article FRAMES the relationship between Romania (or Europe) and the European Union or Euro-Atlantic institutions.
+You are classifying how a Romanian news article FRAMES Romania's relationship with the European Union and Euro-Atlantic institutions.
 
-IMPORTANT: Classify the ARTICLE'S OWN framing, not the opinions of politicians quoted in it. A journalist who neutrally reports a sovereignist politician's speech is writing a PRAGMATIC article, not a sovereignist one.
+IMPORTANT: Classify the JOURNALIST'S OWN framing, not the views of politicians quoted in the article. An article that neutrally reports an anti-EU politician's speech is PRAGMATIC, not SUVERANIST.
 
 Pick ONE label:
 
-PRO_EUROPEAN — The article frames EU membership, European integration, or Euro-Atlantic alignment as DESIRABLE. European values or partnerships are presented positively. EU criticism is absent or dismissed.
+PRO_EUROPEAN — The journalist frames EU membership, European integration, or NATO alignment as beneficial or desirable for Romania. Signals: EU values or partnerships described positively, Schengen/euro accession framed as achievement, European solidarity emphasized, EU criticism absent or dismissed.
+Example: article about Romania's Schengen accession that uses "pas important", "succes", "apropierea de Europa" without any critical voice.
 
-SUVERANIST — The article frames EU institutions or European integration as a THREAT to Romania's autonomy. National sovereignty or independence from Brussels are presented as primary values. EU rules are framed as external impositions.
+SUVERANIST — The journalist frames EU institutions or European integration as a threat to Romanian autonomy or national interest. Signals: EU rules described as impositions, Brussels portrayed as controlling Romania, national sovereignty presented as primary value, EU described as bureaucratic or harmful.
+Example: article using "dictat de la Bruxelles", "cedarea suveranității", "interferență europeană", or framing EU regulations as damaging to Romania.
 
-PRAGMATIC — The article discusses EU matters in purely PRACTICAL terms: fund absorption, regulation compliance, trade negotiations, institutional procedures. No ideological framing in either direction. Also use this when the article reports on pro-EU or sovereignist actors without the journalist taking a side.
+PRAGMATIC — The article discusses EU matters factually without ideological framing. Covers: fund absorption deadlines, trade negotiations, regulatory compliance, institutional appointments, NATO military logistics. Also use when reporting on pro-EU or sovereignist politicians without the journalist taking a side.
+Example: article about EU fund absorption percentages, Schengen border procedures, or trade tariff negotiations with no editorial lean.
+
+Do NOT use PRAGMATIC as a default. If the journalist's word choices show any lean toward EU being beneficial or threatening, pick PRO_EUROPEAN or SUVERANIST.
 
 Respond with ONLY a valid JSON object:
-{{"eu_orientation": "<pro_european/suveranist/pragmatic>", "signal_phrase": "<3-8 words showing the framing direction>", "rationale": "<one sentence>"}}
+{{"eu_orientation": "<pro_european/suveranist/pragmatic>", "signal_phrase": "<3-8 words from the article showing the framing>", "rationale": "<one sentence>"}}
 
 Title: {title}
 Text: {content}\
@@ -332,8 +339,20 @@ def migrate(conn):
     log.info("Schema migration complete.")
 
 
-def fetch_articles(conn, rescore: bool) -> list[dict]:
-    rescore_clause = "" if rescore else "AND a.llm_register IS NULL"
+def fetch_articles(conn, rescore: bool, axis: str) -> list[dict]:
+    # For rescore: fetch all labeled articles on the target axis to reprocess them.
+    # For initial run: fetch only articles not yet labeled on register (the first axis).
+    if rescore:
+        # Rescore fetches everything with a valid topic regardless of existing labels
+        rescore_clause = ""
+    elif axis in ('stance', 'eu'):
+        # Non-rescore stance/eu runs: only fetch articles that already have a register label
+        # (ensures we don't process articles the register pass hasn't reached yet)
+        rescore_clause = "AND a.llm_register IS NOT NULL"
+    else:
+        # Default: register pass fetches only unlabeled articles
+        rescore_clause = "AND a.llm_register IS NULL"
+
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cur.execute(f"""
         SELECT a.id, a.title, a.content_text, a.llm_topic, o.name AS outlet
@@ -398,7 +417,7 @@ def main():
     conn = psycopg2.connect(DB_URL)
     migrate(conn)
 
-    articles = fetch_articles(conn, args.rescore)
+    articles = fetch_articles(conn, args.rescore, args.axis)
     if args.limit > 0:
         articles = articles[:args.limit]
 
@@ -443,27 +462,35 @@ def main():
 
         # ── Register ──────────────────────────────────────────────────────────
         if args.axis in ('register', 'all'):
-            prompt = REGISTER_PROMPT.format(title=title, content=content)
-            result, conf, votes = run_vote(
-                client, prompt,
-                extract_fn    = lambda d: d.get('register', '').lower(),
-                valid_values  = {'informativ', 'opinie', 'investigativ', 'promotional'},
-                article_id    = article_id,
-                axis          = 'register',
-                title         = title,
-                max_runs      = 2,
-                register_mode = True,
-            )
-            if result:
-                reg_val = (result.get('register') or '').lower()
-                fields['llm_register']       = reg_val
-                fields['llm_register_conf']  = conf
-                fields['llm_register_votes'] = json.dumps(votes)
-                stats['register'][reg_val] += 1
-                if conf == 'low':
-                    stats['reg_low'] += 1
+            # Fact-check articles from fact-checker outlets: force investigativ
+            # without spending an LLM call — their format is unambiguous
+            if outlet in FACTCHECKER_OUTLETS and is_factcheck_article(title):
+                fields['llm_register']       = 'investigativ'
+                fields['llm_register_conf']  = 'high'
+                fields['llm_register_votes'] = json.dumps(['forced_factcheck'])
+                stats['register']['investigativ'] += 1
             else:
-                stats['reg_skip'] += 1
+                prompt = REGISTER_PROMPT.format(title=title, content=content)
+                result, conf, votes = run_vote(
+                    client, prompt,
+                    extract_fn    = lambda d: d.get('register', '').lower(),
+                    valid_values  = {'informativ', 'opinie', 'investigativ', 'promotional'},
+                    article_id    = article_id,
+                    axis          = 'register',
+                    title         = title,
+                    max_runs      = 2,
+                    register_mode = True,
+                )
+                if result:
+                    reg_val = (result.get('register') or '').lower()
+                    fields['llm_register']       = reg_val
+                    fields['llm_register_conf']  = conf
+                    fields['llm_register_votes'] = json.dumps(votes)
+                    stats['register'][reg_val] += 1
+                    if conf == 'low':
+                        stats['reg_low'] += 1
+                else:
+                    stats['reg_skip'] += 1
 
         # ── Entity stance ─────────────────────────────────────────────────────
         if args.axis in ('stance', 'all') and is_political:

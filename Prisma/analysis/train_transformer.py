@@ -27,16 +27,16 @@ HEAD_TOKENS  = 380
 TAIL_TOKENS  = 100
 
 BATCH_SIZE       = 8
-GRAD_ACCUM_STEPS = 2        
+GRAD_ACCUM_STEPS = 2
 LEARNING_RATE    = 2e-5
 WEIGHT_DECAY     = 0.01
-WARMUP_STEPS     = 400
-MAX_EPOCHS       = 8
-PATIENCE         = 3
+WARMUP_STEPS     = 200   
+MAX_EPOCHS       = 10
+PATIENCE         = 5
 SEED             = 42
 
-TEST_OUTLETS = ["Buletin de Bucuresti", "Gazeta de Sud"]
-VAL_OUTLETS  = ["Arad24", "Factual"]
+TEST_OUTLETS = ["Arad24", "PressOne"]
+VAL_OUTLETS  = ["Gazeta de Sud", "Defapt.ro"]
 
 logging.basicConfig(
     level=logging.INFO,
@@ -54,7 +54,7 @@ class AxisConfig:
     classes: list[str]
     loss_type: str = "focal"       
     task_weight: float = 1.0
-    focal_gamma: float = 2.0
+    focal_gamma: float = 1.0
     db_column: str = ""
 
     def __post_init__(self):
@@ -67,26 +67,28 @@ class AxisConfig:
 
 AXES = [
     AxisConfig(
-        name="gov_stance",
+        name="register",
+        classes=["informativ", "opinie", "investigativ", "promotional"],
+        loss_type="ce_smooth",  # CrossEntropy + label smoothing, not focal
+        task_weight=1.0,
+        focal_gamma=1.0,        # unused for ce_smooth but kept for config consistency
+        db_column="llm_register",
+    ),
+    AxisConfig(
+        name="stance",
         classes=["critic", "neutru", "favorabil"],
         loss_type="focal",
-        task_weight=1.5,          
-        focal_gamma=2.5,           
-        db_column="llm_gov_stance",
+        task_weight=1.5,
+        focal_gamma=2.5,
+        db_column="llm_stance",
     ),
     AxisConfig(
-        name="framing",
-        classes=["critic", "favorabil", "investigativ"],
-        loss_type="ce",            
-        task_weight=1.0,
-        db_column="llm_framing",
-    ),
-    AxisConfig(
-        name="sovereignism",
-        classes=["cadru_suveranist", "neutru"],
-        loss_type="ce",
-        task_weight=1.0,
-        db_column="llm_sovereignism",
+        name="eu_orientation",
+        classes=["pro_european", "pragmatic", "suveranist"],
+        loss_type="focal",
+        task_weight=2.0,       # higher weight: fewer labeled articles, important axis
+        focal_gamma=2.0,
+        db_column="llm_eu_orientation",
     ),
     AxisConfig(
         name="topic",
@@ -105,31 +107,32 @@ AXES = [
 # ── Label mapping ─────────────────────────────────────────────────────────────
 
 LABEL_MAP = {
-    "gov_stance": {
+    "register": {
+        "informativ":   "informativ",
+        "opinie":       "opinie",
+        "investigativ": "investigativ",
+        "promotional":  "promotional",
+    },
+    "stance": {
         "critic":    "critic",
         "neutru":    "neutru",
         "favorabil": "favorabil",
     },
-    "framing": {
-        "critic":       "critic",
-        "favorabil":    "favorabil",
-        "investigativ": "investigativ",
-    },
-    "sovereignism": {
-        "cadru_suveranist":    "cadru_suveranist",
-        "neutru":              "neutru",
-        "cadru_integrationist": "neutru",  
+    "eu_orientation": {
+        "pro_european": "pro_european",
+        "pragmatic":    "pragmatic",
+        "suveranist":   "suveranist",
     },
     "topic": {
-        "politics":       "politics",
-        "social":         "social",
-        "culture":        "culture",
-        "economy":        "economy",
+        "politics":        "politics",
+        "social":          "social",
+        "culture":         "culture",
+        "economy":         "economy",
         "foreign_affairs": "foreign_affairs",
-        "health":         "health",
-        "environment":    "environment",
-        "justice":        "justice",
-        "technology":     "technology",
+        "health":          "health",
+        "environment":     "environment",
+        "justice":         "justice",
+        "technology":      "technology",
     },
 }
 
@@ -141,28 +144,51 @@ def set_seed(seed: int):
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark     = False
 
 
 def build_oversampler(articles: list[dict], axes: list[AxisConfig]) -> WeightedRandomSampler:
     """
-    Proportional oversampling for gov_stance minority classes.
-    favorabil (677) gets ~7x weight vs neutru (4701).
-    critic (1353) gets ~3.5x weight vs neutru.
-    Other axes are balanced enough to not need oversampling.
+    Inverse-frequency oversampling driven by the register axis.
+    Forced fact-check articles (deterministic investigativ labels) get 2x extra weight
+    since their labels are noise-free — unlike LLM-labeled investigativ articles.
     """
-    weights = []
-    # Find gov_stance axis
-    gov_axis = next(a for a in axes if a.name == "gov_stance")
+    oversample_axis = next(a for a in axes if a.name == "register")
 
+    valid_labels = [
+        art["labels"][oversample_axis.name]
+        for art in articles
+        if art["labels"][oversample_axis.name] != -1
+    ]
+    counts = Counter(valid_labels)
+    total  = len(valid_labels)
+    class_weights = {
+        cls_id: total / (oversample_axis.num_classes * max(cnt, 1))
+        for cls_id, cnt in counts.items()
+    }
+
+    investigativ_id = oversample_axis.label2id.get("investigativ", -1)
+
+    weights = []
     for art in articles:
-        label_id = art["labels"]["gov_stance"]
-        label_name = gov_axis.id2label[label_id]
-        if label_name == "favorabil":
-            weights.append(7.0)
-        elif label_name == "critic":
-            weights.append(3.5)
-        else:
+        label_id = art["labels"][oversample_axis.name]
+        if label_id == -1:
             weights.append(1.0)
+        else:
+            w = class_weights.get(label_id, 1.0)
+            # Boost forced fact-check articles: their investigativ label is guaranteed correct
+            votes = art.get("llm_register_votes")
+            if (label_id == investigativ_id and votes is not None
+                    and "forced_factcheck" in str(votes)):
+                w *= 2.0
+            weights.append(w)
+
+    log.info(f"Oversampler weights ({oversample_axis.name}): "
+             f"{ {oversample_axis.id2label[k]: round(v, 2) for k, v in class_weights.items()} }")
+    forced = sum(1 for a in articles
+                 if "forced_factcheck" in str(a.get("llm_register_votes", "")))
+    log.info(f"  Forced fact-check articles upweighted (2x): {forced}")
 
     return WeightedRandomSampler(
         weights=weights,
@@ -180,7 +206,9 @@ def compute_class_weights(labels: list[int], num_classes: int) -> torch.Tensor:
         count = max(counts.get(c, 0), 1)
         weights.append(total / (num_classes * count))
     w = torch.tensor(weights, dtype=torch.float32)
-    return w / w.sum() * num_classes
+    w = w / w.sum() * num_classes
+    w = torch.clamp(w, min=0.5)   # floor prevents erasure of majority class
+    return w
 
 
 # ── Focal loss ────────────────────────────────────────────────────────────────
@@ -201,20 +229,25 @@ class FocalLoss(nn.Module):
 # ── Data loading ──────────────────────────────────────────────────────────────
 
 def load_labeled_data(axes: list[AxisConfig]) -> list[dict]:
-    """Load articles that have all 4 axes labeled."""
+    """
+    Load articles that have at least llm_topic and llm_register labeled.
+    Other axes (stance, eu_orientation) may be NULL — handled via loss masking.
+    Articles contribute to whichever heads they have labels for.
+    """
     axis_cols = ", ".join(f"a.{a.db_column}" for a in axes)
 
     query = f"""
         SELECT a.id, a.title, a.content_text, o.name AS outlet,
-               {axis_cols}
+               {axis_cols},
+               a.llm_register_votes,
+               a.llm_stance_conf
         FROM articles a
         JOIN outlets o ON a.outlet_id = o.id
-        WHERE a.llm_gov_stance IS NOT NULL
-          AND a.llm_framing IS NOT NULL
-          AND a.llm_sovereignism IS NOT NULL
-          AND a.llm_topic IS NOT NULL
+        WHERE a.llm_topic IS NOT NULL
+          AND a.llm_register IS NOT NULL
+          AND a.llm_topic != 'sports'
+          AND NOT COALESCE(a.is_excluded, false)
           AND a.content_text IS NOT NULL
-          AND COALESCE(a.is_excluded, false) = false
           AND LENGTH(a.content_text) >= 200
     """
 
@@ -228,14 +261,26 @@ def load_labeled_data(axes: list[AxisConfig]) -> list[dict]:
     conn.close()
 
     articles = [dict(zip(columns, row)) for row in rows]
-    log.info(f"Loaded {len(articles):,} labeled articles.")
+    log.info(f"Loaded {len(articles):,} articles (partial labels allowed).")
+
+    # Log coverage per axis
+    for axis in axes:
+        n = sum(1 for a in articles if a.get(axis.db_column) is not None)
+        log.info(f"  {axis.name}: {n:,} labeled ({n/len(articles)*100:.1f}%)")
+
     return articles
 
 
 def map_labels(articles: list[dict], axes: list[AxisConfig]) -> list[dict]:
-    """Apply label mapping and filter out unmappable rows."""
+    """
+    Map raw DB label strings to integer IDs.
+    Missing labels (NULL) are stored as -1 (mask sentinel).
+    Articles are only dropped if topic or register labels are invalid.
+    Low-confidence stance labels are masked out (set to -1).
+    """
     valid = []
     dropped = 0
+    stance_masked_low_conf = 0
     drop_reasons = Counter()
 
     for art in articles:
@@ -244,27 +289,43 @@ def map_labels(articles: list[dict], axes: list[AxisConfig]) -> list[dict]:
 
         for axis in axes:
             raw_val = art.get(axis.db_column)
+
+            # Confidence filter: mask low-confidence stance labels
+            if axis.name == 'stance' and raw_val is not None:
+                if art.get('llm_stance_conf') == 'low':
+                    labels[axis.name] = -1
+                    stance_masked_low_conf += 1
+                    continue
+
+            # Missing label — mask this head for this article
             if raw_val is None:
-                skip = True
-                drop_reasons[f"{axis.name}:null"] += 1
-                break
+                labels[axis.name] = -1
+                continue
 
             raw_val = str(raw_val).strip().lower()
-
             mapping = LABEL_MAP.get(axis.name, {})
+
             if mapping:
                 mapped = mapping.get(raw_val)
                 if mapped is None:
-                    skip = True
-                    drop_reasons[f"{axis.name}:{raw_val}"] += 1
-                    break
+                    if axis.name in ('topic', 'register'):
+                        skip = True
+                        drop_reasons[f"{axis.name}:{raw_val}"] += 1
+                        break
+                    else:
+                        labels[axis.name] = -1
+                        continue
             else:
                 mapped = raw_val
 
             if mapped not in axis.label2id:
-                skip = True
-                drop_reasons[f"{axis.name}:{mapped}_not_in_classes"] += 1
-                break
+                if axis.name in ('topic', 'register'):
+                    skip = True
+                    drop_reasons[f"{axis.name}:{mapped}_not_in_classes"] += 1
+                    break
+                else:
+                    labels[axis.name] = -1
+                    continue
 
             labels[axis.name] = axis.label2id[mapped]
 
@@ -276,9 +337,15 @@ def map_labels(articles: list[dict], axes: list[AxisConfig]) -> list[dict]:
         valid.append(art)
 
     log.info(f"After label mapping: {len(valid):,} valid, {dropped:,} dropped.")
+    log.info(f"  Stance low-confidence labels masked: {stance_masked_low_conf:,}")
     if drop_reasons:
         for reason, count in drop_reasons.most_common(10):
             log.info(f"  drop reason: {reason} ({count})")
+
+    for axis in axes:
+        n = sum(1 for a in valid if a["labels"][axis.name] != -1)
+        log.info(f"  {axis.name}: {n:,} articles with valid labels")
+
     return valid
 
 
@@ -297,11 +364,14 @@ def split_by_outlet(articles: list[dict], test_outlets: list[str],
 
     log.info(f"Split: train={len(train):,}  val={len(val):,}  test={len(test):,}")
 
-    # Log per-split class distributions for gov_stance
-    gov_axis = next(a for a in AXES if a.name == "gov_stance")
-    for name, data in [("train", train), ("val", val), ("test", test)]:
-        counts = Counter(gov_axis.id2label[art["labels"]["gov_stance"]] for art in data)
-        log.info(f"  {name} gov_stance: {dict(counts)}")
+    for split_name, split_data in [("train", train), ("val", val), ("test", test)]:
+        for axis in AXES:
+            valid = [a for a in split_data if a["labels"][axis.name] != -1]
+            if not valid:
+                log.info(f"  {split_name} {axis.name}: no labels")
+                continue
+            counts = Counter(axis.id2label[a["labels"][axis.name]] for a in valid)
+            log.info(f"  {split_name} {axis.name} (n={len(valid)}): {dict(counts)}")
 
     return train, val, test
 
@@ -388,8 +458,11 @@ class MultiTaskBiasClassifier(nn.Module):
         self.backbone = AutoModel.from_pretrained(model_name)
         self.backbone.gradient_checkpointing_enable()
 
-        hidden_size = self.backbone.config.hidden_size  
+        hidden_size = self.backbone.config.hidden_size
         self.dropout = nn.Dropout(dropout)
+        # Higher dropout for stance: prevents overconfident predictions on
+        # the critic-dominated training set, improves neutru/favorabil generalization
+        self.stance_dropout = nn.Dropout(0.3)
         self.axes = axes
 
         self.heads = nn.ModuleDict({
@@ -399,12 +472,14 @@ class MultiTaskBiasClassifier(nn.Module):
 
     def forward(self, input_ids, attention_mask):
         outputs = self.backbone(input_ids=input_ids, attention_mask=attention_mask)
-        cls_repr = self.dropout(outputs.last_hidden_state[:, 0, :])
+        cls_repr = outputs.last_hidden_state[:, 0, :]
 
-        logits = {
-            axis.name: self.heads[axis.name](cls_repr)
-            for axis in self.axes
-        }
+        logits = {}
+        for axis in self.axes:
+            if axis.name == "stance":
+                logits[axis.name] = self.heads[axis.name](self.stance_dropout(cls_repr))
+            else:
+                logits[axis.name] = self.heads[axis.name](self.dropout(cls_repr))
         return logits
 
 
@@ -415,11 +490,15 @@ def build_loss_functions(axes: list[AxisConfig], train_articles: list[dict],
     """Build per-axis loss functions with class weights."""
     losses = {}
     for axis in axes:
-        labels = [art["labels"][axis.name] for art in train_articles]
+        labels = [art["labels"][axis.name] for art in train_articles
+                  if art["labels"][axis.name] != -1]
         weights = compute_class_weights(labels, axis.num_classes).to(device)
 
         if axis.loss_type == "focal":
             losses[axis.name] = FocalLoss(alpha=weights, gamma=axis.focal_gamma)
+        elif axis.loss_type == "ce_smooth":
+            # Label smoothing: prevents overconfidence on noisy/ambiguous labels
+            losses[axis.name] = nn.CrossEntropyLoss(weight=weights, label_smoothing=0.1)
         else:
             losses[axis.name] = nn.CrossEntropyLoss(weight=weights)
 
@@ -427,28 +506,35 @@ def build_loss_functions(axes: list[AxisConfig], train_articles: list[dict],
 
 
 def evaluate(model, dataloader, axes, device) -> dict:
-    """Compute per-axis macro F1 on a dataset."""
+    """Compute per-axis macro F1 on a dataset, ignoring masked (-1) labels."""
     model.eval()
-    all_preds = {a.name: [] for a in axes}
+    all_preds  = {a.name: [] for a in axes}
     all_labels = {a.name: [] for a in axes}
 
     with torch.no_grad():
         for batch in dataloader:
-            input_ids = batch["input_ids"].to(device)
+            input_ids      = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
-            labels = batch["labels"].to(device)
+            labels         = batch["labels"].to(device)
 
             logits = model(input_ids, attention_mask)
 
             for i, axis in enumerate(axes):
-                preds = logits[axis.name].argmax(dim=-1).cpu().tolist()
-                golds = labels[:, i].cpu().tolist()
+                axis_labels = labels[:, i]
+                mask        = axis_labels != -1
+                if mask.sum() == 0:
+                    continue
+                preds = logits[axis.name][mask].argmax(dim=-1).cpu().tolist()
+                golds = axis_labels[mask].cpu().tolist()
                 all_preds[axis.name].extend(preds)
                 all_labels[axis.name].extend(golds)
 
     from sklearn.metrics import f1_score
     results = {}
     for axis in axes:
+        if not all_labels[axis.name]:
+            results[axis.name] = 0.0
+            continue
         f1 = f1_score(all_labels[axis.name], all_preds[axis.name],
                       average="macro", zero_division=0)
         results[axis.name] = f1
@@ -484,7 +570,11 @@ def train(args):
     # Print class distributions
     log.info("\n  Class distributions after mapping:")
     for axis in AXES:
-        counts = Counter(art["labels"][axis.name] for art in articles)
+        counts = Counter(
+            art["labels"][axis.name]
+            for art in articles
+            if art["labels"][axis.name] != -1
+        )
         dist = "  ".join(f"{axis.id2label[k]}:{v}" for k, v in sorted(counts.items()))
         log.info(f"    {axis.name}: {dist}")
 
@@ -495,6 +585,7 @@ def train(args):
 
     # Tokenizer
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+    tokenizer.model_max_length = 1_000_000  # suppress spurious length warnings
 
     train_ds = BiasDataset(train_data, tokenizer, AXES)
     val_ds   = BiasDataset(val_data, tokenizer, AXES)
@@ -521,11 +612,9 @@ def train(args):
     # Loss functions
     loss_fns = build_loss_functions(AXES, train_data, device)
 
-    # Training loop
     scaler = torch.amp.GradScaler("cuda")
     best_f1 = 0.0
     patience_counter = 0
-
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     for epoch in range(1, MAX_EPOCHS + 1):
@@ -534,23 +623,30 @@ def train(args):
         optimizer.zero_grad()
 
         for step, batch in enumerate(train_loader, 1):
-            input_ids = batch["input_ids"].to(device)
+            input_ids      = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
-            labels = batch["labels"].to(device)
+            labels         = batch["labels"].to(device)
 
             with torch.amp.autocast("cuda"):
                 logits = model(input_ids, attention_mask)
-
-                total_loss = torch.tensor(0.0, device=device)
+                total_loss  = torch.tensor(0.0, device=device)
+                active_axes = 0
                 for i, axis in enumerate(AXES):
                     axis_labels = labels[:, i]
-                    axis_logits = logits[axis.name]
-                    axis_loss = loss_fns[axis.name](axis_logits, axis_labels)
-                    total_loss = total_loss + axis.task_weight * axis_loss
-
-                total_loss = total_loss / GRAD_ACCUM_STEPS
+                    mask = axis_labels != -1
+                    if mask.sum() == 0:
+                        continue
+                    axis_loss = loss_fns[axis.name](logits[axis.name][mask], axis_labels[mask])
+                    total_loss  = total_loss + axis.task_weight * axis_loss
+                    active_axes += 1
+                if active_axes > 0:
+                    total_loss = total_loss / GRAD_ACCUM_STEPS
 
             scaler.scale(total_loss).backward()
+
+            if active_axes == 0:
+                optimizer.zero_grad()
+                continue
 
             if step % GRAD_ACCUM_STEPS == 0:
                 scaler.unscale_(optimizer)
@@ -558,16 +654,13 @@ def train(args):
                 scale_before = scaler.get_scale()
                 scaler.step(optimizer)
                 scaler.update()
-                scale_after = scaler.get_scale()
-                if scale_after >= scale_before:
+                if scaler.get_scale() >= scale_before:
                     scheduler.step()
                 optimizer.zero_grad()
 
             epoch_loss += total_loss.item() * GRAD_ACCUM_STEPS
 
         avg_loss = epoch_loss / len(train_loader)
-
-        # Validation
         val_results, _, _ = evaluate(model, val_loader, AXES, device)
         val_f1 = val_results["avg_f1"]
 
@@ -577,7 +670,6 @@ def train(args):
             + "  ".join(f"{a.name}={val_results[a.name]:.3f}" for a in AXES)
         )
 
-        # Early stopping
         if val_f1 > best_f1:
             best_f1 = val_f1
             patience_counter = 0

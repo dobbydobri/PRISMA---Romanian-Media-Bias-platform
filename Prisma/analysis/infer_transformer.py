@@ -23,23 +23,32 @@ log = logging.getLogger(__name__)
 
 DB_URL      = DATABASE_URL
 MODEL_DIR   = Path("transformer_model")
-BATCH_SIZE  = 64        
-PAGE_SIZE   = 500       
-DB_BATCH    = 500       
+BATCH_SIZE  = 64
+PAGE_SIZE   = 500
+DB_BATCH    = 500
 MAX_SEQ_LEN = 512
 HEAD_TOKENS = 380
 TAIL_TOKENS = 100
 
+# Outlets excluded from stance and eu_orientation inference —
+# fact-checkers don't produce editorial framing toward political actors
+FACTCHECKER_OUTLETS = {'Factual', 'Veridica'}
 
-# ── Model (must match training architecture exactly) ─────────────────────────
+# Axes that should not be inferred for fact-checker outlets
+FACTCHECKER_EXCLUDED_AXES = {'stance', 'eu_orientation'}
+
+
+# ── Model (must match training architecture exactly) ──────────────────────────
 
 class MultiTaskBiasClassifier(torch.nn.Module):
     def __init__(self, model_name, axes_config, dropout=0.1):
         super().__init__()
         self.backbone = AutoModel.from_pretrained(model_name)
-        hidden_size = self.backbone.config.hidden_size
-        self.dropout = torch.nn.Dropout(dropout)
-        self.axes_config = axes_config
+        hidden_size   = self.backbone.config.hidden_size
+        self.dropout  = torch.nn.Dropout(dropout)
+        # Stance head uses higher dropout — must match training
+        self.stance_dropout = torch.nn.Dropout(0.3)
+        self.axes_config    = axes_config
 
         self.heads = torch.nn.ModuleDict({
             ac["name"]: torch.nn.Linear(hidden_size, len(ac["classes"]))
@@ -47,12 +56,15 @@ class MultiTaskBiasClassifier(torch.nn.Module):
         })
 
     def forward(self, input_ids, attention_mask):
-        outputs = self.backbone(input_ids=input_ids, attention_mask=attention_mask)
-        cls_repr = self.dropout(outputs.last_hidden_state[:, 0, :])
-        return {
-            ac["name"]: self.heads[ac["name"]](cls_repr)
-            for ac in self.axes_config
-        }
+        outputs  = self.backbone(input_ids=input_ids, attention_mask=attention_mask)
+        cls_repr = outputs.last_hidden_state[:, 0, :]
+        result   = {}
+        for ac in self.axes_config:
+            if ac["name"] == "stance":
+                result[ac["name"]] = self.heads[ac["name"]](self.stance_dropout(cls_repr))
+            else:
+                result[ac["name"]] = self.heads[ac["name"]](self.dropout(cls_repr))
+        return result
 
 
 # ── Tokenization ──────────────────────────────────────────────────────────────
@@ -60,7 +72,7 @@ class MultiTaskBiasClassifier(torch.nn.Module):
 def encode_batch(titles, bodies, tokenizer):
     """Head+tail tokenization — must match training exactly."""
     all_input_ids = []
-    all_attention  = []
+    all_attention = []
 
     for title, body in zip(titles, bodies):
         title = title or ""
@@ -70,7 +82,7 @@ def encode_batch(titles, bodies, tokenizer):
         body_ids  = tokenizer(body,  add_special_tokens=False, truncation=False)["input_ids"]
 
         title_budget = min(len(title_ids), 60)
-        body_budget  = MAX_SEQ_LEN - 3 - title_budget  
+        body_budget  = MAX_SEQ_LEN - 3 - title_budget
 
         if len(body_ids) <= body_budget:
             body_selected = body_ids
@@ -105,7 +117,7 @@ def encode_batch(titles, bodies, tokenizer):
 # ── Database helpers ──────────────────────────────────────────────────────────
 
 def ensure_columns_exist(conn, axes_config):
-    """Create tf_ columns if they don't already exist."""
+    """Verify v4 tf_ columns exist — created by migration SQL, this is a safety check."""
     cur = conn.cursor()
     for ac in axes_config:
         for col, dtype in [
@@ -126,17 +138,19 @@ def ensure_columns_exist(conn, axes_config):
 
 
 def fetch_page(conn, last_id: int, rescore: bool) -> list[dict]:
-    where_rescore = "" if rescore else "AND tf_gov_stance IS NULL"
+    """Fetch a page of articles with their outlet name for fact-checker filtering."""
+    where_rescore = "" if rescore else "AND a.tf_register IS NULL"
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cur.execute(f"""
-        SELECT id, title, content_text
-        FROM articles
-        WHERE id > %s
-          AND content_text IS NOT NULL
-          AND LENGTH(content_text) >= 200
-          AND COALESCE(is_excluded, false) = false
+        SELECT a.id, a.title, a.content_text, o.name AS outlet
+        FROM articles a
+        JOIN outlets o ON a.outlet_id = o.id
+        WHERE a.id > %s
+          AND a.content_text IS NOT NULL
+          AND LENGTH(a.content_text) >= 200
+          AND NOT COALESCE(a.is_excluded, false)
           {where_rescore}
-        ORDER BY id
+        ORDER BY a.id
         LIMIT %s
     """, (last_id, PAGE_SIZE))
     rows = [dict(r) for r in cur.fetchall()]
@@ -163,7 +177,17 @@ def store_predictions(conn, batch_results: list[dict], axes_config):
 
 # ── Batch prediction ──────────────────────────────────────────────────────────
 
-def predict_batch(ids, titles, bodies, model, tokenizer, axes_config, device):
+def predict_batch(rows, model, tokenizer, axes_config, device):
+    """
+    Run inference on a batch. Fact-checker outlets get NULL for
+    stance and eu_orientation — these axes are not meaningful for
+    verification journalism.
+    """
+    ids     = [r["id"]           for r in rows]
+    titles  = [r["title"]        for r in rows]
+    bodies  = [r["content_text"] for r in rows]
+    outlets = [r["outlet"]       for r in rows]
+
     encoding       = encode_batch(titles, bodies, tokenizer)
     input_ids      = encoding["input_ids"].to(device)
     attention_mask = encoding["attention_mask"].to(device)
@@ -174,20 +198,32 @@ def predict_batch(ids, titles, bodies, model, tokenizer, axes_config, device):
 
     results = []
     for i, art_id in enumerate(ids):
+        is_factchecker = outlets[i] in FACTCHECKER_OUTLETS
         row = {"id": art_id}
+
         for ac in axes_config:
-            probs      = F.softmax(logits[ac["name"]][i], dim=-1).cpu().numpy()
+            axis_name = ac["name"]
+
+            # Fact-checkers: null out stance and eu_orientation
+            if is_factchecker and axis_name in FACTCHECKER_EXCLUDED_AXES:
+                row[f"tf_{axis_name}"]      = None
+                row[f"tf_{axis_name}_prob"] = None
+                row[f"tf_{axis_name}_conf"] = None
+                continue
+
+            probs      = F.softmax(logits[axis_name][i], dim=-1).cpu().numpy()
             pred_idx   = int(probs.argmax())
             pred_label = ac["classes"][pred_idx]
             confidence = float(probs[pred_idx])
 
-            row[f"tf_{ac['name']}"]      = pred_label
-            row[f"tf_{ac['name']}_prob"] = json.dumps(
+            row[f"tf_{axis_name}"]      = pred_label
+            row[f"tf_{axis_name}_prob"] = json.dumps(
                 {ac["classes"][j]: round(float(probs[j]), 4)
                  for j in range(len(ac["classes"]))},
                 ensure_ascii=False,
             )
-            row[f"tf_{ac['name']}_conf"] = round(confidence, 4)
+            row[f"tf_{axis_name}_conf"] = round(confidence, 4)
+
         results.append(row)
 
     return results
@@ -206,7 +242,8 @@ def run_inference(args):
 
     log.info("Loading model...")
     tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR / "tokenizer")
-    model     = MultiTaskBiasClassifier(model_name, axes_config)
+    tokenizer.model_max_length = 1_000_000  # suppress length warnings
+    model = MultiTaskBiasClassifier(model_name, axes_config)
     model.load_state_dict(
         torch.load(MODEL_DIR / "best_model.pt", map_location=device, weights_only=True)
     )
@@ -217,13 +254,14 @@ def run_inference(args):
     conn = psycopg2.connect(DB_URL)
     ensure_columns_exist(conn, axes_config)
 
-    where_rescore = "" if args.rescore else "AND tf_gov_stance IS NULL"
+    # Count articles to score
+    where_rescore = "" if args.rescore else "AND tf_register IS NULL"
     cur = conn.cursor()
     cur.execute(f"""
         SELECT COUNT(*) FROM articles
         WHERE content_text IS NOT NULL
           AND LENGTH(content_text) >= 200
-          AND COALESCE(is_excluded, false) = false
+          AND NOT COALESCE(is_excluded, false)
           {where_rescore}
     """)
     total = cur.fetchone()[0]
@@ -235,10 +273,10 @@ def run_inference(args):
         conn.close()
         return
 
-    processed  = 0
-    last_id    = 0
-    db_buffer  = []
-    start      = time.time()
+    processed = 0
+    last_id   = 0
+    db_buffer = []
+    start     = time.time()
 
     while True:
         page = fetch_page(conn, last_id, args.rescore)
@@ -248,12 +286,8 @@ def run_inference(args):
         last_id = page[-1]["id"]
 
         for offset in range(0, len(page), BATCH_SIZE):
-            gpu_batch  = page[offset: offset + BATCH_SIZE]
-            ids        = [r["id"]           for r in gpu_batch]
-            titles     = [r["title"]        for r in gpu_batch]
-            bodies     = [r["content_text"] for r in gpu_batch]
-
-            results = predict_batch(ids, titles, bodies, model, tokenizer, axes_config, device)
+            gpu_batch = page[offset: offset + BATCH_SIZE]
+            results   = predict_batch(gpu_batch, model, tokenizer, axes_config, device)
             db_buffer.extend(results)
 
         if not args.dry_run:
@@ -309,7 +343,8 @@ def print_outlet_summary(args):
             outlet_types[outlet] = otype
 
         classes = ac["classes"]
-        header  = f"{'Outlet':<25} {'Type':<20} " + "".join(f"{c:>16}" for c in classes)
+        header  = (f"{'Outlet':<25} {'Type':<20} "
+                   + "".join(f"{c:>16}" for c in classes))
         print(header)
         print("-" * len(header))
 
@@ -329,7 +364,7 @@ def print_outlet_summary(args):
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="PRISMA transformer inference")
+    parser = argparse.ArgumentParser(description="PRISMA v4 transformer inference")
     parser.add_argument("--rescore",  action="store_true",
                         help="Rescore all articles, not just unscored ones")
     parser.add_argument("--dry-run",  action="store_true",
