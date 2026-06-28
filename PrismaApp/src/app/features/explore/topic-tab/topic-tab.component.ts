@@ -1,5 +1,4 @@
-import { Component, inject, signal, OnInit, Input } from '@angular/core';
-import { DatePipe } from '@angular/common';
+import { Component, inject, signal, OnInit, input } from '@angular/core';
 import { PageEvent, MatPaginatorModule } from '@angular/material/paginator';
 import { MatCardModule } from '@angular/material/card';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
@@ -10,12 +9,13 @@ import { MatChipsModule } from '@angular/material/chips';
 import { ArticlesService } from '../../../core/api/articles.service';
 import { PaginatedResult } from '../../../core/models/cluster.model';
 import { ArticleListItem } from '../../../core/models/article.model';
+import { RoDatePipe } from '../../../shared/pipes/ro-date.pipe';
 
 @Component({
   selector: 'app-topic-tab',
   standalone: true,
   imports: [
-    DatePipe,
+    RoDatePipe,
     MatCardModule,
     MatPaginatorModule,
     MatProgressSpinnerModule,
@@ -29,13 +29,13 @@ import { ArticleListItem } from '../../../core/models/article.model';
 export class TopicTabComponent implements OnInit {
   private articlesService = inject(ArticlesService);
 
-  @Input({ required: true }) topic!: string;
+  topic = input.required<string>();
 
-  items          = signal<ArticleListItem[]>([]);
-  totalCount     = signal<number>(0);
-  page           = signal<number>(1);
-  loading        = signal<boolean>(false);
-  error          = signal<string | null>(null);
+  items      = signal<ArticleListItem[]>([]);
+  totalCount = signal<number>(0);
+  page       = signal<number>(1);
+  loading    = signal<boolean>(false);
+  error      = signal<string | null>(null);
 
   readonly PAGE_SIZE = 20;
 
@@ -48,7 +48,7 @@ export class TopicTabComponent implements OnInit {
     this.error.set(null);
 
     this.articlesService
-      .getArticles(this.page(), this.PAGE_SIZE, this.topic)
+      .getArticles(this.page(), this.PAGE_SIZE, this.topic())
       .subscribe({
         next: (res: PaginatedResult<ArticleListItem>) => {
           this.items.set(res.items);
@@ -56,9 +56,7 @@ export class TopicTabComponent implements OnInit {
           this.loading.set(false);
         },
         error: (err: unknown) => {
-          this.error.set(
-            'Nu s-au putut încărca articolele. Încearcă din nou.',
-          );
+          this.error.set('Nu s-au putut încărca articolele. Încearcă din nou.');
           this.loading.set(false);
           console.error('[TopicTab] API error:', err);
         },

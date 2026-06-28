@@ -20,7 +20,7 @@
           @for (s of suggestionsA(); track s.name) {
             <mat-option [value]="s.name">
               <span class="suggestion-name">{{ s.name }}</span>
-              <span class="suggestion-meta">{{ s.label }} · {{ s.articleCount }} articole</span>
+              <span class="suggestion-meta">{{ s.label }} · {{ s.article_count }} articole</span>
             </mat-option>
           }
         </mat-autocomplete>
@@ -44,7 +44,7 @@
           @for (s of suggestionsB(); track s.name) {
             <mat-option [value]="s.name">
               <span class="suggestion-name">{{ s.name }}</span>
-              <span class="suggestion-meta">{{ s.label }} · {{ s.articleCount }} articole</span>
+              <span class="suggestion-meta">{{ s.label }} · {{ s.article_count }} articole</span>
             </mat-option>
           }
         </mat-autocomplete>
@@ -61,8 +61,10 @@
       @if (loading()) {
         <mat-spinner diameter="20" />
       } @else {
-        <mat-icon>search</mat-icon>
-        Caută conexiuni
+        <ng-container>
+          <mat-icon>search</mat-icon>
+          Caută conexiuni
+        </ng-container>
       }
     </button>
   </div>
@@ -77,17 +79,17 @@
           <div class="result-header">
             <mat-icon class="header-icon direct-icon">link</mat-icon>
             <h3>Conexiune directă</h3>
-            <span class="article-badge">{{ r.direct.articleCount }} articole</span>
+            <span class="article-badge">{{ r.direct.article_count }} articole</span>
           </div>
           <p class="result-description">
-            <strong>{{ r.entityA }}</strong> și <strong>{{ r.entityB }}</strong>
-            apar împreună în {{ r.direct.articleCount }} articole.
+            <strong>{{ r.entity_a }}</strong> și <strong>{{ r.entity_b }}</strong>
+            apar împreună în {{ r.direct.article_count }} articole.
           </p>
           <div class="article-list">
             @for (a of r.direct.articles; track a.id) {
               <a [href]="a.url" target="_blank" class="article-item">
                 <span class="article-title">{{ a.title }}</span>
-                <span class="article-meta">{{ a.outlet }} · {{ a.publishedAt | date:'dd MMM yyyy' }}</span>
+                <span class="article-meta">{{ a.outlet }} · {{ a.published_at | date:'dd MMM yyyy' }}</span>
               </a>
             }
           </div>
@@ -143,7 +145,7 @@
                       @for (a of edge.articles; track a.id) {
                         <a [href]="a.url" target="_blank" class="article-item small">
                           <span class="article-title">{{ a.title }}</span>
-                          <span class="article-meta">{{ a.outlet }} · {{ a.publishedAt | date:'dd MMM yyyy' }}</span>
+                          <span class="article-meta">{{ a.outlet }} · {{ a.published_at | date:'dd MMM yyyy' }}</span>
                         </a>
                       }
                     </div>

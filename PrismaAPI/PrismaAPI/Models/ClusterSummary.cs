@@ -1,51 +1,42 @@
-using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace PrismaAPI.Models;
 
-[Table("cluster_summaries")]
+/// <summary>
+/// Represents an LLM-generated narrative summary for a cluster or event.
+/// Column-to-property mapping is configured exclusively via Fluent API in <see cref="PrismaAPI.Data.PrismaDbContext"/>.
+/// </summary>
 public class ClusterSummary
 {
-    [Key]
-    [Column("id")]
     public long Id { get; set; }
 
-    [Column("scope")]
     public string? Scope { get; set; }
 
-    [Column("cluster_run_id")]
     public int ClusterRunId { get; set; }
 
-    [Column("cluster_id")]
     public int ClusterId { get; set; }
 
-    [Column("summary_text")]
     public string? SummaryText { get; set; }
 
-    [Column("key_points", TypeName = "jsonb")]
-    public string? KeyPoints { get; set; }
+    /// <summary>
+    /// Key bullet points stored as a JSON array in the database.
+    /// EF Core maps this via HasConversion&lt;List&lt;string&gt;&gt; in OnModelCreating.
+    /// </summary>
+    public List<string>? KeyPoints { get; set; }
 
-    [Column("source_article_ids")]
     public int[]? SourceArticleIds { get; set; }
 
-    [Column("model")]
     public string? Model { get; set; }
 
-    [Column("prompt_version")]
     public string? PromptVersion { get; set; }
 
-    [Column("mean_pairwise_cosine")]
     public float? MeanPairwiseCosine { get; set; }
 
-    [Column("generation_ms")]
     public int? GenerationMs { get; set; }
 
-    [Column("generated_at")]
     public DateTime? GeneratedAt { get; set; }
 
-    [Column("cluster_title")]
     public string? ClusterTitle { get; set; }
-
 
     public ClusterRun? ClusterRun { get; set; }
 }

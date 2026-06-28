@@ -7,9 +7,9 @@ using PrismaAPI.DTOs;
 
 namespace PrismaAPI.Services;
 
-public class ConnectionsPathService
+public class ConnectionsPathService : IConnectionsPathService
 {
-    private readonly string _dbConnectionString;
+    private readonly NpgsqlDataSource _dataSource;
     private readonly HttpClient _graphServiceClient;
     private readonly ILogger<ConnectionsPathService> _logger;
 
@@ -17,12 +17,11 @@ public class ConnectionsPathService
     private const int MaxEdgeArticles = 10;
 
     public ConnectionsPathService(
-        IConfiguration config,
+        NpgsqlDataSource dataSource,
         IHttpClientFactory httpClientFactory,
         ILogger<ConnectionsPathService> logger)
     {
-        _dbConnectionString = config.GetConnectionString("DefaultConnection")
-            ?? throw new InvalidOperationException("DefaultConnection not configured");
+        _dataSource = dataSource;
         _graphServiceClient = httpClientFactory.CreateClient("GraphService");
         _logger = logger;
     }
@@ -46,7 +45,7 @@ public class ConnectionsPathService
             LIMIT @Limit;
             """;
 
-        await using var conn = new NpgsqlConnection(_dbConnectionString);
+        await using var conn = await _dataSource.OpenConnectionAsync();
         var rows = await conn.QueryAsync(sql, new
         {
             Query = query,
@@ -138,7 +137,7 @@ public class ConnectionsPathService
             LIMIT @Limit;
             """;
 
-        await using var conn = new NpgsqlConnection(_dbConnectionString);
+        await using var conn = await _dataSource.OpenConnectionAsync();
         var rows = await conn.QueryAsync(sql, new
         {
             EntityA = entityA,
@@ -185,7 +184,7 @@ public class ConnectionsPathService
             LIMIT @Limit;
             """;
 
-        await using var conn = new NpgsqlConnection(_dbConnectionString);
+        await using var conn = await _dataSource.OpenConnectionAsync();
         var rows = await conn.QueryAsync(sql, new
         {
             EntityFrom = entityFrom,

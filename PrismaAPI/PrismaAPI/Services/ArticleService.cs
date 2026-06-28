@@ -5,7 +5,7 @@ using PrismaAPI.Models;
 
 namespace PrismaAPI.Services;
 
-public class ArticleService
+public class ArticleService : IArticleService
 {
     private readonly PrismaDbContext _context;
     private readonly ILogger<ArticleService> _logger;

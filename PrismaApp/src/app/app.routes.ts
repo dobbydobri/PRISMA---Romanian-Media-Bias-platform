@@ -40,7 +40,7 @@ export const routes: Routes = [
   {
     path: 'connections',
     loadComponent: () =>
-      import('./connection-analysis/connection-analysis.component').then(
+      import('./features/connections/connection-analysis.component').then(
         (m) => m.ConnectionAnalysisComponent,
       ),
   },

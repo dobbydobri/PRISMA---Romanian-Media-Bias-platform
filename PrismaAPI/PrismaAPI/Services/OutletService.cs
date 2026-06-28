@@ -5,7 +5,7 @@ using PrismaAPI.Models;
 
 namespace PrismaAPI.Services;
 
-public class OutletService
+public class OutletService : IOutletService
 {
     private readonly PrismaDbContext _context;
     private readonly ILogger<OutletService> _logger;
@@ -27,7 +27,6 @@ public class OutletService
             {
                 OutletId = g.Key,
                 TotalArticles = g.Count(),
-                PoliticalArticles = 0, // Not available anymore
                 AvgCoalition = g.Where(a => a.TfGovStanceConf != null)
                                  .Average(a => (double?)a.TfGovStanceConf),
                 AvgEuAxis = g.Where(a => a.TfSovereignismConf != null)
@@ -87,7 +86,6 @@ public class OutletService
                 OutletType = o.OutletType,
                 Url = o.BaseUrl,
                 TotalArticles = stats?.TotalArticles ?? 0,
-                PoliticalArticles = stats?.PoliticalArticles ?? 0,
                 AvgCoalition = stats?.AvgCoalition,
                 AvgEuAxis = stats?.AvgEuAxis,
                 AvgSensationalism = stats?.AvgSensationalism,

@@ -1,40 +1,35 @@
 <article class="result-card">
 
-  
   <div class="result-card__meta">
-    <span class="result-card__outlet">{{ article.outlet_name }}</span>
-    @if (formattedDate) {
-      <span class="result-card__date">{{ formattedDate }}</span>
+    <span class="result-card__outlet">{{ article().outlet_name }}</span>
+    @if (article().published_at | roDate; as date) {
+      <span class="result-card__date">{{ date }}</span>
     }
   </div>
 
-  
-  @if (article.url) {
+  @if (article().url) {
     <a
       class="result-card__title"
-      [href]="article.url"
+      [href]="article().url"
       target="_blank"
       rel="noopener noreferrer"
-    >{{ article.title }}</a>
+    >{{ article().title }}</a>
   } @else {
-    <span class="result-card__title result-card__title--no-link">{{ article.title }}</span>
+    <span class="result-card__title result-card__title--no-link">{{ article().title }}</span>
   }
 
-  
   <app-article-scores
-    [scoreSensationalism]="article.score_sensationalism"
-    [scoreCitationQuality]="article.score_citation_quality"
-    [scoreRhetoricIntensity]="article.score_rhetoric_intensity"
+    [scoreSensationalism]="article().score_sensationalism"
+    [scoreCitationQuality]="article().score_citation_quality"
+    [scoreRhetoricIntensity]="article().score_rhetoric_intensity"
   ></app-article-scores>
 
-  
   <div class="result-card__footer">
 
-    
     <div class="result-card__relevance">
-      @if (article.cos_sim !== null) {
+      @if (article().cos_sim !== null) {
         <span class="result-card__relevance-label">{{ matchType }}</span>
-        <div class="result-card__bar-track" aria-label="Relevanță {{ relevanceLabel }}" role="meter" aria-valuenow="{{ article.cos_sim }}" aria-valuemin="0" aria-valuemax="1">
+        <div class="result-card__bar-track" aria-label="Relevanță {{ relevanceLabel }}" role="meter" aria-valuenow="{{ article().cos_sim }}" aria-valuemin="0" aria-valuemax="1">
           <div class="result-card__bar-fill" [style.width]="relevanceWidth"></div>
         </div>
         <span class="result-card__relevance-value">{{ relevanceLabel }}</span>
@@ -43,13 +38,12 @@
       }
     </div>
 
-    
     <div class="result-card__ranks">
-      @if (article.dense_rank !== null) {
-        <span class="rank-badge">Dense&nbsp;#{{ article.dense_rank }}</span>
+      @if (article().dense_rank !== null) {
+        <span class="rank-badge">Dense&nbsp;#{{ article().dense_rank }}</span>
       }
-      @if (article.sparse_rank !== null) {
-        <span class="rank-badge">Sparse&nbsp;#{{ article.sparse_rank }}</span>
+      @if (article().sparse_rank !== null) {
+        <span class="rank-badge">Sparse&nbsp;#{{ article().sparse_rank }}</span>
       }
     </div>
 

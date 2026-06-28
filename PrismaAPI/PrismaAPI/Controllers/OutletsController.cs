@@ -9,10 +9,10 @@ namespace PrismaAPI.Controllers;
 [Produces("application/json")]
 public class OutletsController : ControllerBase
 {
-    private readonly OutletService _outletService;
+    private readonly IOutletService _outletService;
     private readonly ILogger<OutletsController> _logger;
 
-    public OutletsController(OutletService outletService, ILogger<OutletsController> logger)
+    public OutletsController(IOutletService outletService, ILogger<OutletsController> logger)
     {
         _outletService = outletService;
         _logger = logger;

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Npgsql;
@@ -9,16 +10,22 @@ using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// ── CORS ──────────────────────────────────────────────────────────────────────
+var allowedOrigins = builder.Configuration
+    .GetSection("Cors:AllowedOrigins")
+    .Get<string[]>() ?? ["http://localhost:4200"];
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAngular", policy =>
     {
-        policy.WithOrigins("http://localhost:4200")
+        policy.WithOrigins(allowedOrigins)
               .AllowAnyHeader()
               .AllowAnyMethod();
     });
 });
 
+// ── Controllers & JSON ────────────────────────────────────────────────────────
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
@@ -36,6 +43,7 @@ builder.Services.AddSwaggerGen(options =>
     }
 });
 
+// ── Database ──────────────────────────────────────────────────────────────────
 builder.Services.AddDbContext<PrismaDbContext>(options =>
 {
     options.UseNpgsql(
@@ -49,16 +57,11 @@ builder.Services.AddNpgsqlDataSource(
     builder.Configuration.GetConnectionString("DefaultConnection")!,
     dataSourceBuilder => dataSourceBuilder.UseVector());
 
+// ── Configuration ─────────────────────────────────────────────────────────────
 builder.Services.Configure<SearchOptions>(
     builder.Configuration.GetSection(SearchOptions.Section));
 
-builder.Services.AddHttpClient("EmbeddingService", client =>
-{
-    var baseUrl = builder.Configuration["EmbeddingService:BaseUrl"] ?? "http://localhost:5001";
-    client.BaseAddress = new Uri(baseUrl);
-    client.Timeout = TimeSpan.FromSeconds(30);
-});
-
+// ── HTTP Clients ──────────────────────────────────────────────────────────────
 builder.Services.AddHttpClient("QueryEmbedder", (sp, client) =>
 {
     var opts = sp.GetRequiredService<IOptions<SearchOptions>>().Value;
@@ -75,18 +78,46 @@ builder.Services.AddHttpClient("GraphService", client =>
 }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler())
   .AddTypedClient((client) => client);
 
-builder.Services.AddScoped<OutletService>();
-builder.Services.AddScoped<ArticleService>();
-builder.Services.AddScoped<ClusterService>();
-builder.Services.AddScoped<ClusterRunWindowService>();
-builder.Services.AddScoped<FactCheckService>();
-builder.Services.AddScoped<AnalysisService>();
+// ── Application Services ──────────────────────────────────────────────────────
+builder.Services.AddScoped<IOutletService, OutletService>();
+builder.Services.AddScoped<IArticleService, ArticleService>();
+builder.Services.AddScoped<IClusterService, ClusterService>();
+builder.Services.AddScoped<IClusterRunWindowService, ClusterRunWindowService>();
+builder.Services.AddScoped<IFactCheckService, FactCheckService>();
+builder.Services.AddScoped<IAnalysisService, AnalysisService>();
 builder.Services.AddScoped<ISearchService, SearchService>();
-builder.Services.AddScoped<ConnectionsService>();
-builder.Services.AddScoped<ConnectionsPathService>();
+builder.Services.AddScoped<IConnectionsService, ConnectionsService>();
+builder.Services.AddScoped<IConnectionsPathService, ConnectionsPathService>();
+
+// ── Health Checks ─────────────────────────────────────────────────────────────
+builder.Services.AddHealthChecks();
 
 var app = builder.Build();
 
+// ── Global Exception Handler ──────────────────────────────────────────────────
+app.UseExceptionHandler(errorApp =>
+{
+    errorApp.Run(async context =>
+    {
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        context.Response.ContentType = "application/json";
+
+        var feature = context.Features.Get<IExceptionHandlerFeature>();
+        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+        if (feature?.Error is not null)
+        {
+            logger.LogError(feature.Error, "Unhandled exception on {Method} {Path}",
+                context.Request.Method, context.Request.Path);
+        }
+
+        await context.Response.WriteAsJsonAsync(new
+        {
+            error = "An unexpected error occurred. Please try again later."
+        });
+    });
+});
+
+// ── Swagger (dev only) ────────────────────────────────────────────────────────
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -100,5 +131,6 @@ if (app.Environment.IsDevelopment())
 app.UseCors("AllowAngular");
 
 app.MapControllers();
+app.MapHealthChecks("/health");
 
 app.Run();

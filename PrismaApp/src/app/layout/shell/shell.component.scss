@@ -1,5 +1,14 @@
 @use '../../../app/styles/design-tokens' as *;
 
+.shell__progress-bar {
+  position: fixed;
+  top: 64px; // sit flush below the fixed header
+  left: 0;
+  right: 0;
+  z-index: 999;
+  height: 3px;
+}
+
 .shell__content {
   padding-top: 64px; // height of the fixed header
   min-height: 100vh;

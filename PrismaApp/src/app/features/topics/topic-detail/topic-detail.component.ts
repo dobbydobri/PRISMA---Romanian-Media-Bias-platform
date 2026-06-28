@@ -7,14 +7,14 @@ import { catchError } from 'rxjs/operators';
 
 import { ClustersService } from '../../../core/api/clusters.service';
 import { ClusterDetail, ClusterSummary } from '../../../core/models/cluster.model';
-import { ArticleListItem } from '../../../core/models/article.model';
 import { ArticleScoresComponent } from '../../../shared/components/article-scores/article-scores.component';
 import { EmptyStateComponent } from '../../../shared/components/empty-state/empty-state.component';
+import { RoDatePipe } from '../../../shared/pipes/ro-date.pipe';
 
 @Component({
   selector: 'app-topic-detail',
   standalone: true,
-  imports: [RouterLink, MatIconModule, KeyValuePipe, ArticleScoresComponent, EmptyStateComponent],
+  imports: [RouterLink, MatIconModule, KeyValuePipe, ArticleScoresComponent, EmptyStateComponent, RoDatePipe],
   templateUrl: './topic-detail.component.html',
   styleUrl: './topic-detail.component.scss',
 })
@@ -31,15 +31,6 @@ export class TopicDetailComponent implements OnInit {
   // Expose to template
   articlesByOutlet = computed(() => this.detail()?.articles_by_outlet ?? {});
   hasSummary = computed(() => !!this.summary());
-  
-  // Format dates locally
-  formatDate(dateString: string | null): string | null {
-    if (!dateString) return null;
-    const d = new Date(dateString);
-    if (isNaN(d.getTime())) return null;
-    const months = ['ian', 'feb', 'mar', 'apr', 'mai', 'iun', 'iul', 'aug', 'sep', 'oct', 'nov', 'dec'];
-    return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
-  }
 
   ngOnInit(): void {
     const runIdStr = this.route.snapshot.paramMap.get('runId');

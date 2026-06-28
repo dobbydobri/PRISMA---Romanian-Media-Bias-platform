@@ -1,4 +1,14 @@
 <app-header></app-header>
+
+@if (loading()) {
+  <mat-progress-bar
+    mode="indeterminate"
+    class="shell__progress-bar"
+    aria-label="Se încarcă..."
+    aria-live="polite"
+  ></mat-progress-bar>
+}
+
 <main class="shell__content">
   <router-outlet></router-outlet>
 </main>

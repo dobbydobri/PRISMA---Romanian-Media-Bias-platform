@@ -4,7 +4,7 @@ using PrismaAPI.DTOs;
 
 namespace PrismaAPI.Services;
 
-public class ClusterRunWindowService
+public class ClusterRunWindowService : IClusterRunWindowService
 {
     private readonly PrismaDbContext _context;
     private readonly ILogger<ClusterRunWindowService> _logger;

@@ -1,21 +1,21 @@
 export interface FactCheckListItem {
   id: number;
-  articleId: number;
+  article_id: number;
   title: string;
-  outletName: string;
+  outlet_name: string;
   verdict: string;
-  verdictType: string;
-  severityScore: number | null;
-  publishedAt: string; // ISO 8601
+  verdict_type: string;
+  severity_score: number | null;
+  published_at: string; // ISO 8601
   url: string | null;
 }
 
 export interface FactCheckBadge {
-  hasTier1Match: boolean;
-  hasTier2Match: boolean;
-  factCheckCount: number;
-  maxSeverity: number | null;
-  linkedFactChecks: FactCheckListItem[];
+  has_tier1_match: boolean;
+  has_tier2_match: boolean;
+  fact_check_count: number;
+  max_severity: number | null;
+  linked_fact_checks: FactCheckListItem[];
 }
 
 export const VERDICT_LABELS: Record<string, string> = {

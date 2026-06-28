@@ -5,7 +5,7 @@ using PrismaAPI.Models;
 
 namespace PrismaAPI.Services;
 
-public class ClusterService
+public class ClusterService : IClusterService
 {
     private readonly PrismaDbContext _context;
     private readonly ILogger<ClusterService> _logger;
@@ -77,14 +77,9 @@ public class ClusterService
             (cl, csGroup) => new { Cluster = cl, Summary = csGroup.FirstOrDefault() }
         );
 
-        var preFilterCount = await query.CountAsync();
-        _logger.LogInformation("Clusters before filter: {PreFilterCount}", preFilterCount);
-
         if (isEvent == true)
         {
             query = query.Where(x => x.Cluster.OutletCount > 1 && x.Summary != null);
-            var postFilterCount = await query.CountAsync();
-            _logger.LogInformation("Clusters after filter (OutletCount > 1 && Summary != null): {PostFilterCount}", postFilterCount);
         }
 
         query = sortBy.ToLowerInvariant() switch
@@ -250,28 +245,11 @@ public class ClusterService
         if (summary is null)
             return null;
 
-        var keyPoints = new List<string>();
-        if (!string.IsNullOrWhiteSpace(summary.KeyPoints))
-        {
-            try
-            {
-                var parsed = System.Text.Json.JsonSerializer.Deserialize<List<string>>(summary.KeyPoints);
-                if (parsed != null)
-                {
-                    keyPoints = parsed;
-                }
-            }
-            catch (System.Text.Json.JsonException ex)
-            {
-                _logger.LogWarning(ex, "Failed to parse KeyPoints JSON for runId={RunId}, clusterId={ClusterId}. Raw value: {RawValue}", runId, clusterId, summary.KeyPoints);
-            }
-        }
-
         return new ClusterSummaryDto
         {
             ClusterTitle = summary.ClusterTitle,
             NeutralSummary = summary.SummaryText,
-            KeyPoints = keyPoints
+            KeyPoints = summary.KeyPoints ?? new List<string>()
         };
     }
 

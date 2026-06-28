@@ -35,7 +35,7 @@
 
     @if (showDetails()) {
       <div class="factcheck-badge__details" id="badge-details">
-        @for (fc of b.linkedFactChecks; track fc.id) {
+        @for (fc of b.linked_fact_checks; track fc.id) {
           <div class="factcheck-badge__item">
 
             <span
@@ -47,7 +47,7 @@
             </span>
 
             <span class="factcheck-badge__item-meta">
-              {{ fc.outletName }}&nbsp;·&nbsp;{{ fc.publishedAt | date:'d MMM y':'':'ro' }}
+              {{ fc.outlet_name }}&nbsp;·&nbsp;{{ fc.published_at | roDate }}
             </span>
 
             @if (fc.url) {

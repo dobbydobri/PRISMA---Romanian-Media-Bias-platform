@@ -1,14 +1,11 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { API_BASE_URL } from '../core/api/api-config';
-import {
-  EntitySuggestion,
-  EntityPathResponse
-} from '../models/connection.models';
+import { API_BASE_URL } from './api-config';
+import { EntitySuggestion, EntityPathResponse } from '../models/connection.model';
 
 @Injectable({ providedIn: 'root' })
-export class ConnectionsApiService {
+export class ConnectionsService {
   private http = inject(HttpClient);
   private base = `${API_BASE_URL}/api/connections`;
 

@@ -4,8 +4,7 @@ import time
 import logging
 import psycopg2
 from psycopg2.extras import execute_values
-import spacy
-from pathlib import Path
+import stanza
 
 from shared.ner_utils import filter_author_entities
 from entity_normalizer import normalize_unicode, normalize_entity
@@ -15,104 +14,179 @@ DB_URL = os.getenv("DATABASE_URL")
 if not DB_URL:
     raise EnvironmentError("DATABASE_URL not set")
 
-DB_BATCH_SIZE = int(os.getenv("NER_BATCH_SIZE", "200"))
-SPACY_BATCH_SIZE = int(os.getenv("NER_SPACY_BATCH", "4"))
+DB_BATCH_SIZE = int(os.getenv("NER_BATCH_SIZE", "100"))
+NER_BATCH_SIZE = int(os.getenv("NER_MODEL_BATCH", "8"))
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s', datefmt='%H:%M:%S')
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='%H:%M:%S'
+)
 logger = logging.getLogger(__name__)
 
-VALID_LABELS = {'PERSON', 'ORGANIZATION', 'GPE', 'LOC', 'EVENT'}
-CONTEXT_STOPWORDS = {'foto', 'autor', 'sursa', 'imagine', 'credit', 'reporter', 'redactor', 'corespondent'}
-JOURNALISTIC_NOISE = {'INTERVIU', 'EXCLUSIV', 'FOTO', 'UPDATE', 'VIDEO', 'DOCUMENT', 'LIVE', 'BREAKING'}
-ORG_BLOCKLIST = {
-    'facebook', 'instagram', 'telegram', 'twitter', 'tiktok', 'whatsapp', 'youtube',
-    'inquam', 'getty', 'cnn', 'cnbc', 'antena', 'digi', 'b1', 'protv', 'realitatea',
-    'guardian', 'bbc', 'bloomberg', 'trunchiat', 'fals', 'context lipsă', 'fake news',
-    'erata', 'google', 'spotmedia', 'ziare.com', 'tik tok', 'covid', 'dreamstime', 'foto',
+_LABEL_MAP: dict[str, str] = {
+    "PERSON":       "PERSON",
+    "ORG":          "ORGANIZATION",
+    "GPE":          "GPE",
+    "LOC":          "LOC",
+    "EVENT":        "EVENT",
+    "NAT_REL_POL":  "ORGANIZATION",  
+    "FACILITY":     "LOC",           
 }
 
+ORG_BLOCKLIST: frozenset[str] = frozenset({
+    'facebook', 'instagram', 'telegram', 'twitter', 'tiktok', 'whatsapp',
+    'youtube', 'inquam', 'getty', 'cnn', 'cnbc', 'antena', 'digi', 'b1',
+    'protv', 'realitatea', 'guardian', 'bbc', 'bloomberg', 'trunchiat',
+    'fals', 'context lipsă', 'fake news', 'erata', 'google', 'spotmedia',
+    'ziare.com', 'tik tok', 'covid', 'dreamstime', 'foto',
+})
 
-def extract_entity_lemma(ent) -> str:
-    """
-    Extract the lemmatized canonical form of a spaCy entity span.
-
-    Uses token-level lemmas from ro_core_news_lg's trainable lemmatizer.
-    Preserves the capitalization pattern from the surface form per token,
-    since the lemmatizer sometimes lowercases proper nouns.
-
-    Three capitalization cases handled per token:
-    - ALL CAPS (len > 1): keep uppercase  (NATO → NATO, not Nato)
-    - Title Case surface: capitalize lemma (România → România, not românia)
-    - Lowercase: keep as-is
-    """
-    lemma_tokens = [token.lemma_ for token in ent]
-    surface_tokens = ent.text.split()
-
-    recased = []
-    for i, lt in enumerate(lemma_tokens):
-        if i < len(surface_tokens):
-            st = surface_tokens[i]
-            if st.isupper() and len(st) > 1:
-                lt = lt.upper()                        # NATO → NATO
-            elif st[0].isupper() and lt[0].islower():
-                lt = lt[0].upper() + lt[1:]            # România → România
-        recased.append(lt)
-
-    lemma = ' '.join(recased).strip()
-    return normalize_unicode(lemma)
+JOURNALISTIC_NOISE: frozenset[str] = frozenset({
+    'INTERVIU', 'EXCLUSIV', 'FOTO', 'UPDATE', 'VIDEO',
+    'DOCUMENT', 'LIVE', 'BREAKING',
+})
 
 
-def extract_entities_with_lemmas(texts: list[str], nlp, spacy_batch_size: int = 8) -> list[list[tuple]]:
-    """
-    Run spaCy NER on a batch of article texts and return per-article lists of
-    (surface_text, lemma, label) triples.
+def load_roner_model(use_gpu: bool = True) -> 'roner.NER':
+    import roner
+    model = roner.NER(
+        use_gpu=use_gpu,
+        batch_size=NER_BATCH_SIZE,
+        named_persons_only=True,  
+    )
+    logger.info(
+        f"RoNER loaded (use_gpu={use_gpu}, batch_size={NER_BATCH_SIZE}, "
+        f"named_persons_only=True)"
+    )
+    return model
 
-    Applies the same basic quality filters as the previous extract_entities()
-    helper (label allowlist, capitalization check, length limit, context window,
-    org blocklist, journalistic noise). The NER stoplist and author filter are
-    applied downstream in main(), not here, to keep this function pure.
-    """
+
+def extract_entities_roner(
+    texts: list[str],
+    model,
+) -> list[list[tuple[str, str]]]:
     results = []
-    for doc in nlp.pipe(texts, batch_size=spacy_batch_size):
-        entities = []
-        for ent in doc.ents:
-            surface = ent.text.strip()
 
-            if ent.label_ not in VALID_LABELS:
-                continue
+    try:
+        roner_outputs = model(texts)
+    except Exception as e:
+        logger.error(f"RoNER inference failed: {e}")
+        return [[] for _ in texts]
+
+    for output in roner_outputs:
+        entities: list[tuple[str, str]] = []
+        current_text: list[str] = []
+        current_label: str | None = None
+
+        for word in output['words']:
+            tag = word['tag']
+
+            if tag.startswith('B-'):
+                # Flush any in-progress entity
+                if current_text and current_label:
+                    entity_text = ' '.join(current_text).strip()
+                    mapped = _LABEL_MAP.get(current_label)
+                    if mapped:
+                        entities.append((entity_text, mapped))
+                current_text = [word['text']]
+                current_label = tag[2:]  # "B-PERSON" → "PERSON"
+
+            elif tag.startswith('I-') and current_label == tag[2:]:
+                # Continuation of current entity
+                current_text.append(word['text'])
+
+            else:
+                # O tag or label mismatch — flush current entity
+                if current_text and current_label:
+                    entity_text = ' '.join(current_text).strip()
+                    mapped = _LABEL_MAP.get(current_label)
+                    if mapped:
+                        entities.append((entity_text, mapped))
+                current_text = []
+                current_label = None
+
+        # Flush final entity
+        if current_text and current_label:
+            entity_text = ' '.join(current_text).strip()
+            mapped = _LABEL_MAP.get(current_label)
+            if mapped:
+                entities.append((entity_text, mapped))
+
+        # Basic quality filters (model-agnostic, same intent as spaCy version)
+        filtered: list[tuple[str, str]] = []
+        for surface, label in entities:
+            # Must start with uppercase (proper noun sanity check)
             if not surface or not surface[0].isupper():
                 continue
-            if '/' in surface or len(surface) > 40:
-                continue
-            if surface.upper() in JOURNALISTIC_NOISE:
-                continue
-            if any(surface.upper().startswith(noise + ' ') for noise in JOURNALISTIC_NOISE):
-                continue
-            if '*' in surface or surface.count('-') > 1:
+
+            # Length limits: skip empty or suspiciously long spans
+            if len(surface) > 60:
                 continue
 
-            if ent.label_ == 'PERSON':
-                window_start = max(0, ent.start - 3)
-                context_window = doc[window_start:ent.start]
-                is_media_credit = any(
-                    ''.join(c for c in token.text.lower() if c.isalpha()) in CONTEXT_STOPWORDS
-                    for token in context_window
-                )
-                if is_media_credit:
-                    continue
+            # Journalistic noise prefix: "VIDEO Donald Trump" etc.
+            surface_upper = surface.upper()
+            if surface_upper in JOURNALISTIC_NOISE:
+                continue
+            if any(surface_upper.startswith(noise + ' ') for noise in JOURNALISTIC_NOISE):
+                continue
 
-            if ent.label_ == 'ORGANIZATION':
+            # Skip entities with special characters indicating artifacts
+            if '*' in surface:
+                continue
+
+            # Organization blocklist
+            if label == 'ORGANIZATION':
                 if any(blocked in surface.lower() for blocked in ORG_BLOCKLIST):
                     continue
 
-            if ent.label_ == 'LOC':
-                if len(surface.split()) > 5 or surface.lower() in ('tik tok', 'tiktok'):
-                    continue
+            # LOC: reject implausibly long location spans
+            if label == 'LOC' and len(surface.split()) > 6:
+                continue
 
-            lemma = extract_entity_lemma(ent)
-            entities.append((surface, lemma, ent.label_))
+            filtered.append((surface, label))
 
-        results.append(entities)
+        results.append(filtered)
+
+    return results
+
+
+def lemmatize_entities(
+    entities: list[tuple[str, str]],
+    stanza_pipeline,
+) -> list[tuple[str, str, str]]:
+    if not entities:
+        return []
+
+    results: list[tuple[str, str, str]] = []
+
+    for surface, label in entities:
+        try:
+            doc = stanza_pipeline(surface)
+            lemma_tokens = []
+            surface_tokens = surface.split()
+
+            all_words = [w for sent in doc.sentences for w in sent.words]
+
+            for i, word in enumerate(all_words):
+                lt = word.lemma or word.text
+                # Re-apply capitalization from surface form
+                if i < len(surface_tokens):
+                    st = surface_tokens[i]
+                    if st.isupper() and len(st) > 1:
+                        lt = lt.upper()           # NATO → NATO
+                    elif st and st[0].isupper() and lt and lt[0].islower():
+                        lt = lt[0].upper() + lt[1:]  # România → România
+                lemma_tokens.append(lt)
+
+            lemma = ' '.join(lemma_tokens).strip()
+            lemma = normalize_unicode(lemma)
+
+        except Exception:
+            # If lemmatization fails for any entity, use surface form as lemma
+            lemma = surface
+
+        results.append((surface, lemma, label))
 
     return results
 
@@ -120,30 +194,18 @@ def extract_entities_with_lemmas(texts: list[str], nlp, spacy_batch_size: int = 
 def normalize_article_entities(
     raw_entities: list[tuple[str, str, str]],
 ) -> list[tuple[str, str]]:
-    """
-    Two-pass normalization for a single article's entity list.
-
-    Pass 1 (passes 0-4): normalize each entity without article context.
-    Pass 2 (pass 5): surname merge using the pre-normalized list as context.
-
-    Returns a deduplicated list of (normalized_text, label) pairs.
-    The deduplication key is the normalized canonical form, not the raw surface.
-    """
-    # Pass 1: normalize without surname context (passes 0-4)
     pre_normalized: list[tuple[str, str]] = []
     for surface, lemma, label in raw_entities:
         canonical = normalize_entity(surface, label=label, lemma=lemma, article_entities=None)
         if canonical:
             pre_normalized.append((canonical, label))
 
-    # Pass 2: surname merge with article context (pass 5)
     final_entities: list[tuple[str, str]] = []
     for canonical, label in pre_normalized:
         merged = normalize_entity(canonical, label=label, lemma=None, article_entities=pre_normalized)
         if merged:
             final_entities.append((merged, label))
 
-    # Deduplicate on normalized canonical form (preserving first occurrence)
     seen: set[str] = set()
     unique: list[tuple[str, str]] = []
     for text, label in final_entities:
@@ -157,7 +219,10 @@ def normalize_article_entities(
 
 def build_journalist_blocklist_sync(conn) -> set[str]:
     cursor = conn.cursor()
-    cursor.execute("SELECT DISTINCT UNNEST(authors) FROM articles WHERE authors IS NOT NULL AND authors != '{}'")
+    cursor.execute(
+        "SELECT DISTINCT UNNEST(authors) FROM articles "
+        "WHERE authors IS NOT NULL AND authors != '{}'"
+    )
     blocklist = {row[0].lower().strip() for row in cursor.fetchall() if row[0]}
     logger.info(f"Journalist blocklist built: {len(blocklist):,} names.")
     cursor.close()
@@ -171,17 +236,37 @@ def main():
         logger.error(f"Database connection failed: {e}")
         sys.exit(1)
 
-    logger.info("Initializing GPU and loading spaCy Romanian model...")
+    logger.info("Loading RoNER (bert-base-romanian-ner)...")
+    use_gpu = True
     try:
-        spacy.require_gpu()
-        nlp = spacy.load("ro_core_news_lg")
-        logger.info("spaCy successfully loaded onto the GPU!")
-    except OSError as e:
-        logger.error(f"Spacy model not found: {e}. Ensure it's installed in the Docker image.")
-        sys.exit(1)
+        import torch
+        use_gpu = torch.cuda.is_available()
+        if use_gpu:
+            logger.info("CUDA available — RoNER will use GPU.")
+        else:
+            logger.warning("CUDA not available — RoNER will use CPU (slower).")
+    except ImportError:
+        use_gpu = False
+
+    try:
+        model = load_roner_model(use_gpu=use_gpu)
     except Exception as e:
-        logger.warning(f"Could not initialize GPU for spaCy: {e}. Falling back to CPU.")
-        nlp = spacy.load("ro_core_news_lg")
+        logger.error(f"Failed to load RoNER: {e}")
+        sys.exit(1)
+
+    logger.info("Loading Stanza Romanian lemmatizer...")
+    try:
+        stanza.download('ro', processors='tokenize,lemma', verbose=False)
+        stanza_pipeline = stanza.Pipeline(
+            'ro',
+            processors='tokenize,lemma',
+            use_gpu=use_gpu,
+            verbose=False,
+        )
+        logger.info("Stanza lemmatizer loaded.")
+    except Exception as e:
+        logger.error(f"Failed to load Stanza lemmatizer: {e}")
+        sys.exit(1)
 
     journalist_blocklist = build_journalist_blocklist_sync(conn)
 
@@ -189,7 +274,10 @@ def main():
     cursor.execute("SELECT COALESCE(MAX(article_id), 0) FROM article_entities_full;")
     last_id = cursor.fetchone()[0]
     logger.info(f"Resuming from Article ID: {last_id}")
-    logger.info(f"Batch config: DB_BATCH_SIZE={DB_BATCH_SIZE}, SPACY_BATCH_SIZE={SPACY_BATCH_SIZE}")
+    logger.info(
+        f"Batch config: DB_BATCH_SIZE={DB_BATCH_SIZE}, "
+        f"NER_MODEL_BATCH={NER_BATCH_SIZE}"
+    )
 
     total_processed = 0
 
@@ -209,7 +297,7 @@ def main():
                 time.sleep(60)
                 continue
 
-            ids = [row[0] for row in batch]
+            ids         = [row[0] for row in batch]
             authors_list = [row[2] for row in batch]
 
             texts = [normalize_unicode(row[1]) for row in batch]
@@ -217,30 +305,29 @@ def main():
             avg_chars = sum(len(t) for t in texts) / len(texts)
             logger.info(f"Batch of {len(batch)} articles | avg length: {avg_chars:,.0f} chars")
 
-            raw_entity_batches = extract_entities_with_lemmas(
-                texts, nlp=nlp, spacy_batch_size=SPACY_BATCH_SIZE
-            )
+            # Step 1: RoNER entity extraction
+            raw_entity_batches = extract_entities_roner(texts, model)
 
             insert_data = []
             for a_id, raw_entities, authors in zip(ids, raw_entity_batches, authors_list):
 
+                # Step 2: NER stoplist filter (safety net — named_persons_only
                 after_stoplist = [
-                    (surface, lemma, label)
-                    for surface, lemma, label in raw_entities
+                    (surface, label)
+                    for surface, label in raw_entities
                     if not is_ner_stopword(surface, label)
                 ]
 
-                pairs_for_author_filter = [(s, lb) for s, _l, lb in after_stoplist]
-                filtered_pairs = filter_author_entities(pairs_for_author_filter, authors, journalist_blocklist)
-                filtered_set = {text for text, _ in filtered_pairs}
+                # Step 3: Journalist/author blocklist filter
+                filtered_pairs = filter_author_entities(
+                    after_stoplist, authors, journalist_blocklist
+                )
 
-                after_author_filter = [
-                    (surface, lemma, label)
-                    for surface, lemma, label in after_stoplist
-                    if surface in filtered_set
-                ]
+                # Step 4: Stanza lemmatization for inflection resolution
+                with_lemmas = lemmatize_entities(filtered_pairs, stanza_pipeline)
 
-                normalized = normalize_article_entities(after_author_filter)
+                # Step 5: Two-pass normalization n
+                normalized = normalize_article_entities(with_lemmas)
 
                 for norm_text, label in normalized:
                     insert_data.append((a_id, norm_text, label))
@@ -278,9 +365,9 @@ def main():
 
         except MemoryError:
             logger.error(
-                f"MemoryError on batch near Article ID {last_id}. "
-                f"Consider lowering NER_SPACY_BATCH (currently {SPACY_BATCH_SIZE}). "
-                f"Sleeping 10s before retry..."
+                f"MemoryError near Article ID {last_id}. "
+                f"Lower NER_MODEL_BATCH (currently {NER_BATCH_SIZE}). "
+                f"Sleeping 10s..."
             )
             try:
                 conn.rollback()
@@ -289,7 +376,9 @@ def main():
             time.sleep(10)
 
         except Exception as e:
-            logger.error(f"Batch processing failed: {e}. Resuming from Article ID: {last_id}")
+            logger.error(
+                f"Batch processing failed near Article ID {last_id}: {e}"
+            )
             try:
                 conn.rollback()
             except Exception:

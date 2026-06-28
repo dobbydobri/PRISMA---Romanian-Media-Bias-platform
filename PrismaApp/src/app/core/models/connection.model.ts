@@ -1,8 +1,8 @@
 export interface EntitySuggestion {
   name: string;
   label: string;
-  articleCount: number;
-  nodeDegree: number;
+  article_count: number;
+  node_degree: number;
 }
 
 export interface ConnectionArticle {
@@ -10,11 +10,11 @@ export interface ConnectionArticle {
   title: string;
   url: string;
   outlet: string;
-  publishedAt: string | null;
+  published_at: string | null;
 }
 
 export interface DirectConnection {
-  articleCount: number;
+  article_count: number;
   articles: ConnectionArticle[];
 }
 
@@ -34,8 +34,8 @@ export interface IndirectPath {
 }
 
 export interface EntityPathResponse {
-  entityA: string;
-  entityB: string;
+  entity_a: string;
+  entity_b: string;
   direct: DirectConnection | null;
   indirect: IndirectPath[];
 }

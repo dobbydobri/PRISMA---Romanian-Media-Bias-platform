@@ -2,11 +2,9 @@
 PRISMA Graph Service — Flask API for entity path-finding.
 
 Loads entity_connections into a NetworkX graph at startup.
-Exposes:
-  POST /paths        — find K shortest node-disjoint paths between two entities
-  POST /normalize    — canonicalize an entity name
-  GET  /healthz      — health check
-  POST /admin/reload — reload graph from DB
+Uses Yen's K-shortest-paths with node-disjoint selection,
+Adamic-Adar hub penalties, artifact intermediary filtering,
+and raw-count-weighted scoring.
 """
 
 from __future__ import annotations
@@ -32,18 +30,12 @@ DB_URL          = os.environ["DATABASE_URL"]
 MAX_HOPS        = int(os.getenv("MAX_HOPS",        "3"))
 K_PATHS         = int(os.getenv("K_PATHS",         "5"))
 QUERY_PMI_FLOOR = float(os.getenv("QUERY_PMI_FLOOR", "0.5"))
-
-# Minimum raw co-mention count for an edge to be used as a path step.
-# Eliminates low-evidence connections (addresses, one-off co-mentions, etc.)
 MIN_PATH_RAW    = int(os.getenv("MIN_PATH_RAW",    "15"))
 
-# Known Romanian party acronyms — used to detect headline concatenation artifacts
 _PARTY_TOKENS: frozenset[str] = frozenset({
-    "PSD", "PNL", "USR", "AUR", "UDMR", "PMP", "ALDE", "PRO", "PNTCD", "PP-DD"
+    "PSD", "PNL", "USR", "AUR", "UDMR", "PMP", "ALDE", "PRO", "PNTCD",
 })
 
-# Entities blocked from acting as PATH INTERMEDIARIES only.
-# They can still be endpoints (user can search for "România").
 _INTERMEDIARY_BLACKLIST: frozenset[str] = frozenset({
     "românia",
     "europa",
@@ -56,6 +48,79 @@ _INTERMEDIARY_BLACKLIST: frozenset[str] = frozenset({
     "senatul",
 })
 
+# Common nouns that spaCy extracts as entities and that act as
+# meaningless hub intermediaries in paths. These are NOT real named
+# entities — they are generic political/institutional vocabulary.
+_ARTIFACT_WORDS: frozenset[str] = frozenset({
+    # Political process nouns
+    "congres", "congresul",
+    "candidat", "candidată", "candidatul", "candidata", "candidații",
+    "coaliție", "coaliția", "coaliţia",
+    "opoziție", "opoziția", "opoziţia",
+    "alegeri", "alegerile",
+    "campanie", "campania",
+    "sondaj", "sondajul",
+    "referendum", "referendumul",
+    "moțiune", "moțiunea",
+    "demisie", "demisia",
+    "mandat", "mandatul",
+    "portofoliu", "portofoliul",
+    "vot", "votul",
+    "majoritate", "majoritatea",
+    "minoritate", "minoritatea",
+
+    # Budget / economy nouns
+    "buget", "bugetul",
+    "criză", "criza",
+    "inflație", "inflația",
+    "deficit", "deficitul",
+
+    # Events / meetings
+    "protest", "protestul",
+    "declarație", "declarația",
+    "conferință", "conferința",
+    "summit", "summitul",
+    "forum", "forumul",
+    "reuniune", "reuniunea",
+    "sesiune", "sesiunea",
+    "comitet", "comitetul",
+    "consiliu", "consiliul",
+    "ședință", "ședința",
+    "congresul extraordinar",
+
+    # Roles as nouns (not title-prefixed)
+    "premier", "premierul",
+    "președinte", "președintele",
+    "ministru", "ministrul",
+    "primar", "primarul",
+    "senator", "senatorul",
+    "deputat", "deputatul",
+    "ambasador", "ambasadorul",
+    "comisar", "comisarul",
+    "procuror", "procurorul",
+    "judecător", "judecătorul",
+    "cancelar", "cancelarul",
+
+    # Media / communication nouns
+    "comunicat", "comunicatul",
+    "raport", "raportul",
+    "interviu", "interviul",
+    "editorial", "editorialul",
+    "anchetă", "ancheta",
+
+    # Institutional generic
+    "minister", "ministerul",
+    "agenție", "agenția",
+    "autoritate", "autoritatea",
+    "comisie", "comisia",
+    "direcție", "direcția",
+    "inspectorat", "inspectoratul",
+    "secretariat", "secretariatul",
+    "departament", "departamentul",
+    "birou", "biroul",
+    "cabinet", "cabinetul",
+})
+
 # ── Module-level graph state ───────────────────────────────────────────────────
 _graph_lock    = threading.Lock()
 _G:             nx.Graph       = nx.Graph()
@@ -64,13 +129,6 @@ _hub_blacklist: frozenset[str] = frozenset()
 
 
 def load_graph_from_db() -> tuple[nx.Graph, dict[str, int], frozenset[str]]:
-    """
-    Load entity_connections from PostgreSQL into a NetworkX graph.
-
-    No disparity filter — entity_connections already has PMI > 0 and
-    MIN_RAW_COMENTIONS=5 applied at graph_builder time. Additional quality
-    control is applied at query time via QUERY_PMI_FLOOR and MIN_PATH_RAW.
-    """
     logger.info("Loading entity_connections from database...")
     conn   = psycopg2.connect(DB_URL)
     cursor = conn.cursor()
@@ -92,7 +150,6 @@ def load_graph_from_db() -> tuple[nx.Graph, dict[str, int], frozenset[str]]:
 
     degree_map = dict(G.degree())
 
-    # Hub blacklist: top 0.1% by degree (lowercased) + manual intermediary list
     hub_blacklist: frozenset[str] = _INTERMEDIARY_BLACKLIST
     if degree_map:
         sorted_degrees = sorted(degree_map.values())
@@ -123,57 +180,79 @@ def reload_graph() -> None:
 
 
 def adamic_adar_penalty(node: str) -> float:
-    """1 / log(1 + degree) — suppresses hub intermediaries in scoring."""
     deg = _degree_map.get(node, 1)
     return 1.0 / math.log(1 + max(deg, 1))
 
 
 def score_path(path: list[str], G: nx.Graph) -> float:
     """
-    geomean(PMI_edges) × Π_intermediaries(adamic_adar_penalty)
-    Higher = stronger, more specific connection.
+    Combined path strength score:
+        geomean(PMI) × log(1 + geomean(raw)) × Π(AA_penalty)
+
+    Three components:
+    - geomean(PMI): statistical significance of co-occurrence
+    - log(1 + geomean(raw)): evidence strength (how many articles support each edge)
+    - AA penalty: specificity (penalizes generic hub intermediaries)
+
+    A path through PSD (PMI=2.4, raw=7235) scores much higher than a path
+    through "Candidată" (PMI=4.4, raw=46) because the raw-count component
+    rewards well-evidenced connections over statistically surprising but
+    poorly-supported ones.
     """
     if len(path) < 2:
         return 0.0
 
-    log_sum = sum(
-        math.log(max(G[path[i]][path[i + 1]]['weight'], 1e-9))
-        for i in range(len(path) - 1)
-    )
-    geomean = math.exp(log_sum / (len(path) - 1))
+    n_edges = len(path) - 1
+
+    log_pmi_sum = 0.0
+    log_raw_sum = 0.0
+    for i in range(n_edges):
+        edge = G[path[i]][path[i + 1]]
+        log_pmi_sum += math.log(max(edge['weight'], 1e-9))
+        log_raw_sum += math.log(max(edge.get('raw', 1), 1))
+
+    geomean_pmi = math.exp(log_pmi_sum / n_edges)
+    geomean_raw = math.exp(log_raw_sum / n_edges)
 
     aa = 1.0
     for node in path[1:-1]:
         aa *= adamic_adar_penalty(node)
 
-    return geomean * aa
+    return geomean_pmi * math.log(1 + geomean_raw) * aa
 
 
 def is_artifact_intermediary(node: str) -> bool:
     """
-    Detect headline concatenation artifacts and other noise entities
-    that should never appear as path intermediaries.
+    Detect entities that should never appear as path intermediaries.
 
-    Examples caught:
-    - "PNL PSD"        — two party tokens in one entity
-    - "PSD+AUR"        — plus-separated party names
-    - "PNL Rareș Bogdan" — party prefix before a person name
+    Catches:
+    - Headline concatenation artifacts: "PNL PSD", "PSD+AUR"
+    - Party-prefixed names: "PNL Rareș Bogdan"
+    - Common nouns spaCy extracts as entities: "Congres", "Candidată"
+    - Lemmatizer-damaged institutional names: truncated words
     """
     n = node.strip()
 
-    # Contains + separator (PSD+AUR, USR+PNL etc.)
+    # Contains + separator (PSD+AUR, USR+PNL)
     if '+' in n:
         return True
 
-    # Contains two or more known party acronyms as tokens
+    # Multiple party acronyms in one entity
     tokens = set(n.split())
     if len(tokens & _PARTY_TOKENS) >= 2:
         return True
 
-    # Starts with a party acronym followed by a person name
-    # e.g. "PNL Rareș Bogdan" — party prefix artifact
+    # Party acronym prefix before a person name: "PNL Rareș Bogdan"
     parts = n.split(' ', 1)
-    if len(parts) == 2 and parts[0] in _PARTY_TOKENS and parts[1][0].isupper():
+    if len(parts) == 2 and parts[0] in _PARTY_TOKENS and len(parts[1]) > 1 and parts[1][0].isupper():
+        return True
+
+    # Common noun — not a real named entity
+    if n.lower() in _ARTIFACT_WORDS:
+        return True
+
+    # Single-word entities that are all-lowercase (not proper nouns)
+    if ' ' not in n and n[0].islower():
         return True
 
     return False
@@ -190,37 +269,33 @@ def find_node_disjoint_paths(
     min_raw:       int,
 ) -> list[list[str]]:
     """
-    Find up to K node-disjoint paths from source to target.
+    Find up to K node-disjoint paths between source and target.
 
-    Builds a query-time subgraph filtered by PMI floor and minimum raw
-    co-mention count to eliminate low-evidence edges. Uses Yen's
-    shortest_simple_paths (cost = 1/PMI, always positive) to generate
-    candidates within max_hops. Greedily selects node-disjoint paths,
-    rejecting hub-blacklisted and artifact intermediaries.
+    1. Build query subgraph filtered by PMI floor + min raw count
+    2. Run Yen's shortest_simple_paths (cost = 1/PMI)
+    3. Reject paths with hub-blacklisted or artifact intermediaries
+    4. Score remaining by PMI × raw × Adamic-Adar
+    5. Greedily select node-disjoint paths
     """
     if source not in G or target not in G:
         return []
 
-    # Build query-time subgraph: edges above PMI floor AND min raw count
+    # Build query-time subgraph
     G_query = nx.Graph()
     for u, v, d in G.edges(data=True):
         if d['weight'] >= pmi_floor and d.get('raw', 0) >= min_raw:
             G_query.add_edge(u, v, weight=d['weight'], raw=d.get('raw', 0))
 
-    # Ensure source and target are in the query graph even if their edges
-    # are below thresholds — fallback to full graph for connectivity
     if source not in G_query or target not in G_query:
         logger.warning(
-            f"'{source}' or '{target}' disconnected after edge filtering. "
-            f"Falling back to full graph for this query."
+            f"'{source}' or '{target}' disconnected after edge filtering "
+            f"(PMI≥{pmi_floor}, raw≥{min_raw}). Falling back to full graph."
         )
         G_query = G
 
-    # Cost = 1/PMI: always positive, higher PMI = lower cost = preferred
     def edge_cost(u: str, v: str, d: dict) -> float:
         return 1.0 / max(d['weight'], 1e-9)
 
-    # Collect candidate paths within hop limit
     candidates: list[list[str]] = []
     try:
         for path in nx.shortest_simple_paths(G_query, source, target, weight=edge_cost):
@@ -232,7 +307,7 @@ def find_node_disjoint_paths(
     except (nx.NetworkXNoPath, nx.NodeNotFound):
         return []
 
-    # Filter: reject paths with hub-blacklisted or artifact intermediaries
+    # Filter: reject hub-blacklisted and artifact intermediaries
     valid: list[list[str]] = []
     for path in candidates:
         intermediaries = path[1:-1]
@@ -242,8 +317,6 @@ def find_node_disjoint_paths(
             continue
         valid.append(path)
 
-    # If blacklist/artifact filter rejects everything, return top scored
-    # without those filters so the feature always returns something meaningful
     if not valid and candidates:
         logger.warning(
             f"All {len(candidates)} candidates rejected by filters for "
@@ -251,13 +324,11 @@ def find_node_disjoint_paths(
         )
         valid = candidates[:20]
 
-    # Score descending
     scored = sorted(
         ((score_path(path, G_query), path) for path in valid),
         key=lambda x: -x[0]
     )
 
-    # Greedy node-disjoint selection
     selected:            list[list[str]] = []
     used_intermediaries: set[str]        = set()
 
@@ -295,12 +366,10 @@ def normalize():
 
     nl = name.lower()
 
-    # Exact case-insensitive match
     for node in nodes:
         if node.lower() == nl:
             return jsonify({'canonical': node, 'found': True})
 
-    # Single partial match fallback
     matches = [n for n in nodes if nl in n.lower()]
     if len(matches) == 1:
         return jsonify({'canonical': matches[0], 'found': True})
@@ -380,7 +449,6 @@ def admin_reload():
     return jsonify({'status': 'reload_started'})
 
 
-# Load graph on startup
 reload_graph()
 
 if __name__ == '__main__':

@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, OnInit } from '@angular/core';
+import { Component, inject, signal, computed, OnInit, DestroyRef } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -10,6 +10,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatNativeDateModule } from '@angular/material/core';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 import { SearchService } from '../../core/api/search.service';
 import { OutletsService } from '../../core/api/outlets.service';
@@ -49,6 +50,7 @@ export class SearchPageComponent implements OnInit {
   private analysisService = inject(AnalysisService);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
+  private destroyRef = inject(DestroyRef);
 
   // ── Input state ──────────────────────────────────────────────────────────
 
@@ -111,7 +113,7 @@ export class SearchPageComponent implements OnInit {
     });
 
     // Parse URL query params and trigger initial search if query exists
-    this.route.queryParams.subscribe(params => {
+    this.route.queryParams.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(params => {
       let shouldSearch = false;
       
       if (params['q']) {

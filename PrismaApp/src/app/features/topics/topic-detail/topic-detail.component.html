@@ -66,8 +66,8 @@
               @for (article of outletGroup.value; track article.id) {
                 <article class="outlet-article-card">
                   <div class="outlet-article-card__meta">
-                    @if (article.published_at) {
-                      <span class="outlet-article-card__date">{{ formatDate(article.published_at) }}</span>
+                    @if (article.published_at | roDate; as date) {
+                      <span class="outlet-article-card__date">{{ date }}</span>
                     }
                   </div>
                   

@@ -1,5 +1,5 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
-import { DatePipe, NgClass } from '@angular/common';
+import { NgClass } from '@angular/common';
 import { PageEvent, MatPaginatorModule } from '@angular/material/paginator';
 import { MatCardModule } from '@angular/material/card';
 import { MatSelectModule } from '@angular/material/select';
@@ -11,13 +11,14 @@ import { MatButtonModule } from '@angular/material/button';
 import { FactCheckService } from '../../../core/api/fact-check.service';
 import { FactCheckListItem, VERDICT_LABELS, verdictChipColor, verdictLabel } from '../../../core/models/fact-check.model';
 import { PaginatedResult } from '../../../core/models/cluster.model';
+import { RoDatePipe } from '../../../shared/pipes/ro-date.pipe';
 
 @Component({
   selector: 'app-fact-check-tab',
   standalone: true,
   imports: [
     NgClass,
-    DatePipe,
+    RoDatePipe,
     MatCardModule,
     MatSelectModule,
     MatFormFieldModule,
@@ -32,11 +33,11 @@ import { PaginatedResult } from '../../../core/models/cluster.model';
 export class FactCheckTabComponent implements OnInit {
   private factCheckService = inject(FactCheckService);
 
-  items          = signal<FactCheckListItem[]>([]);
-  totalCount     = signal<number>(0);
-  page           = signal<number>(1);
-  loading        = signal<boolean>(false);
-  error          = signal<string | null>(null);
+  items           = signal<FactCheckListItem[]>([]);
+  totalCount      = signal<number>(0);
+  page            = signal<number>(1);
+  loading         = signal<boolean>(false);
+  error           = signal<string | null>(null);
   selectedVerdict = signal<string | undefined>(undefined);
 
   readonly PAGE_SIZE = 20;

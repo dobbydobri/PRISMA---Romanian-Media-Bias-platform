@@ -10,17 +10,20 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 RUN pip install --no-cache-dir \
-    spacy \
-    click \
     psycopg2-binary \
-    networkx
+    networkx \
+    roner \
+    stanza
 
-RUN pip install --no-cache-dir cupy-cuda12x
+RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cu121 \
+    torch==2.3.0
 
-RUN for i in 1 2 3; do \
-        python -m spacy download ro_core_news_lg --timeout 300 && break \
-        || echo "Attempt $i failed, retrying in 10s..." && sleep 10; \
-    done
+RUN python -c "\
+import stanza; \
+stanza.download('ro', processors='tokenize,lemma', verbose=False); \
+import roner; \
+_ = roner.NER(use_gpu=False, batch_size=1, named_persons_only=True); \
+print('RoNER and Stanza models downloaded successfully')"
 
 COPY . .
 

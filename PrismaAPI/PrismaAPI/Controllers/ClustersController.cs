@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc;
 using PrismaAPI.DTOs;
 using PrismaAPI.Services;
@@ -9,13 +10,13 @@ namespace PrismaAPI.Controllers;
 [Produces("application/json")]
 public class ClustersController : ControllerBase
 {
-    private readonly ClusterService _clusterService;
-    private readonly ClusterRunWindowService _clusterRunWindowService;
+    private readonly IClusterService _clusterService;
+    private readonly IClusterRunWindowService _clusterRunWindowService;
     private readonly ILogger<ClustersController> _logger;
 
     public ClustersController(
-        ClusterService clusterService,
-        ClusterRunWindowService clusterRunWindowService,
+        IClusterService clusterService,
+        IClusterRunWindowService clusterRunWindowService,
         ILogger<ClustersController> logger)
     {
         _clusterService = clusterService;
@@ -25,11 +26,12 @@ public class ClustersController : ControllerBase
 
     [HttpGet]
     [ProducesResponseType(typeof(PaginatedResultDto<ClusterListDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<PaginatedResultDto<ClusterListDto>>> GetAll(
         [FromQuery] string? runId,
         [FromQuery] bool? isEvent,
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 20,
+        [FromQuery][Range(1, int.MaxValue)] int page = 1,
+        [FromQuery][Range(1, 100)] int pageSize = 20,
         [FromQuery] string sortBy = "articleCount",
         [FromQuery] DateTime? dateFrom = null,
         [FromQuery] DateTime? dateTo = null)

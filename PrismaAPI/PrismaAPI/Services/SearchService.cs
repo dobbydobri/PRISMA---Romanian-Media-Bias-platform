@@ -245,9 +245,9 @@ public class SearchService : ISearchService
         if (filters.IsFactCheck.HasValue)
         {
             if (filters.IsFactCheck.Value)
-                clauses.Add("AND a.outlet_id IN (3, 6)");
+                clauses.Add("AND a.outlet_id IN (SELECT id FROM outlets WHERE outlet_type = 'fact_checker')");
             else
-                clauses.Add("AND a.outlet_id NOT IN (3, 6)");
+                clauses.Add("AND a.outlet_id NOT IN (SELECT id FROM outlets WHERE outlet_type = 'fact_checker')");
         }
 
         if (!string.IsNullOrWhiteSpace(filters.Topic))

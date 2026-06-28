@@ -33,7 +33,7 @@
           <mat-card-content class="article-card__content">
             <div class="article-card__header">
               <span class="article-card__meta">
-                {{ item.outlet_name }}&nbsp;·&nbsp;{{ item.published_at | date:'d MMM y':'':'ro' }}
+                {{ item.outlet_name }}&nbsp;·&nbsp;{{ item.published_at | roDate }}
               </span>
             </div>
             <h3 class="article-card__title">

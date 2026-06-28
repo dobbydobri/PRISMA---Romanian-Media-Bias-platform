@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc;
 using PrismaAPI.DTOs;
 using PrismaAPI.Services;
@@ -9,10 +10,10 @@ namespace PrismaAPI.Controllers;
 [Produces("application/json")]
 public class AnalysisController : ControllerBase
 {
-    private readonly AnalysisService _analysisService;
+    private readonly IAnalysisService _analysisService;
     private readonly ILogger<AnalysisController> _logger;
 
-    public AnalysisController(AnalysisService analysisService, ILogger<AnalysisController> logger)
+    public AnalysisController(IAnalysisService analysisService, ILogger<AnalysisController> logger)
     {
         _analysisService = analysisService;
         _logger = logger;
@@ -70,10 +71,11 @@ public class AnalysisController : ControllerBase
 
     [HttpGet("llm-vs-xgboost")]
     [ProducesResponseType(typeof(PaginatedResultDto<LlmVsXgboostDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<PaginatedResultDto<LlmVsXgboostDto>>> GetLlmVsXgboost(
         [FromQuery] int? outletId,
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 20)
+        [FromQuery][Range(1, int.MaxValue)] int page = 1,
+        [FromQuery][Range(1, 100)] int pageSize = 20)
     {
         _logger.LogInformation(
             "GET /api/analysis/llm-vs-xgboost — outletId={OutletId}, page={Page}, pageSize={PageSize}",

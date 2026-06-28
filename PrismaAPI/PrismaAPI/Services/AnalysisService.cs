@@ -4,7 +4,7 @@ using PrismaAPI.DTOs;
 
 namespace PrismaAPI.Services;
 
-public class AnalysisService
+public class AnalysisService : IAnalysisService
 {
     private readonly PrismaDbContext _context;
     private readonly ILogger<AnalysisService> _logger;
@@ -249,7 +249,7 @@ public class AnalysisService
                 LlmEuAxis = a.LlmEuAxis,
                 TfGovStanceConf = a.TfGovStanceConf,
                 TfSovereignismConf = a.TfSovereignismConf,
-                LlmFraming = a.TfFraming,
+                LlmFraming = a.LlmFraming,
                 TfTopic = a.TfTopic
             })
             .ToListAsync();

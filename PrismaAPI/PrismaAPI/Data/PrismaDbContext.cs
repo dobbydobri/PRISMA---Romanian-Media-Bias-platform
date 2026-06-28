@@ -35,7 +35,6 @@ public class PrismaDbContext : DbContext
     public PrismaDbContext(DbContextOptions<PrismaDbContext> options)
         : base(options)
     {
-        ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.NoTracking;
     }
 
 
@@ -92,7 +91,27 @@ public class PrismaDbContext : DbContext
             entity.Property(a => a.LlmFraming).HasColumnName("llm_framing");
             entity.Property(a => a.LlmTopic).HasColumnName("llm_topic");
             entity.Property(a => a.LlmScoredAt).HasColumnName("llm_scored_at");
+            entity.Property(a => a.LlmPromptVersion).HasColumnName("llm_prompt_version");
+            entity.Property(a => a.LlmGovStance).HasColumnName("llm_gov_stance");
+            entity.Property(a => a.LlmSovereignism).HasColumnName("llm_sovereignism");
+            entity.Property(a => a.LlmConfidence).HasColumnName("llm_confidence");
 
+            entity.Property(a => a.TfGovStance).HasColumnName("tf_gov_stance");
+            entity.Property(a => a.TfGovStanceProb).HasColumnName("tf_gov_stance_prob").HasColumnType("jsonb");
+            entity.Property(a => a.TfGovStanceConf).HasColumnName("tf_gov_stance_conf");
+            entity.Property(a => a.TfFraming).HasColumnName("tf_framing");
+            entity.Property(a => a.TfFramingProb).HasColumnName("tf_framing_prob").HasColumnType("jsonb");
+            entity.Property(a => a.TfFramingConf).HasColumnName("tf_framing_conf");
+            entity.Property(a => a.TfSovereignism).HasColumnName("tf_sovereignism");
+            entity.Property(a => a.TfSovereignismProb).HasColumnName("tf_sovereignism_prob").HasColumnType("jsonb");
+            entity.Property(a => a.TfSovereignismConf).HasColumnName("tf_sovereignism_conf");
+            entity.Property(a => a.TfTopic).HasColumnName("tf_topic");
+            entity.Property(a => a.TfTopicProb).HasColumnName("tf_topic_prob").HasColumnType("jsonb");
+            entity.Property(a => a.TfTopicConf).HasColumnName("tf_topic_conf");
+
+            entity.Property(a => a.IsExcluded).HasColumnName("is_excluded");
+            entity.Property(a => a.IsTemplated).HasColumnName("is_templated");
+            entity.Property(a => a.Fts).HasColumnName("fts").HasColumnType("tsvector");
 
             entity.HasOne(a => a.Outlet)
                   .WithMany(o => o.Articles)
@@ -217,7 +236,12 @@ public class PrismaDbContext : DbContext
             entity.Property(cs => cs.ClusterRunId).HasColumnName("cluster_run_id");
             entity.Property(cs => cs.ClusterId).HasColumnName("cluster_id");
             entity.Property(cs => cs.SummaryText).HasColumnName("summary_text");
-            entity.Property(cs => cs.KeyPoints).HasColumnName("key_points").HasColumnType("jsonb");
+            entity.Property(cs => cs.KeyPoints)
+                  .HasColumnName("key_points")
+                  .HasColumnType("jsonb")
+                  .HasConversion(
+                      v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+                      v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, (System.Text.Json.JsonSerializerOptions?)null));
             entity.Property(cs => cs.SourceArticleIds).HasColumnName("source_article_ids");
             entity.Property(cs => cs.Model).HasColumnName("model");
             entity.Property(cs => cs.PromptVersion).HasColumnName("prompt_version");

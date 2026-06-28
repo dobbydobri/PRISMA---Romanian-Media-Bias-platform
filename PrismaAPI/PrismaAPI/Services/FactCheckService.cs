@@ -9,7 +9,7 @@ using PrismaAPI.Models;
 
 namespace PrismaAPI.Services;
 
-public class FactCheckService
+public class FactCheckService : IFactCheckService
 {
     private readonly PrismaDbContext _context;
     private readonly ILogger<FactCheckService> _logger;

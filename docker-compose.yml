@@ -215,15 +215,17 @@ services:
     command: python full_text_ner.py
     environment:
       - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@postgres_db:5432/${DB_NAME}
-      - NER_BATCH_SIZE=200
-      - NER_SPACY_BATCH=8
+      - NER_BATCH_SIZE=100
+      - NER_MODEL_BATCH=8
     depends_on:
       postgres_db:
         condition: service_healthy
     volumes:
       - ./Prisma/graph:/app
       - ./Prisma/shared:/app/shared
-    mem_limit: 4g
+      - hf_cache:/root/.cache/huggingface
+      - stanza_cache:/root/stanza_resources
+    mem_limit: 6g
     restart: always
     deploy:
       resources:
@@ -320,3 +322,6 @@ volumes:
   hf_cache:
     name: prisma_hf_cache
     external: true
+  stanza_cache:
+    name: prisma_stanza_cache
+    external: false

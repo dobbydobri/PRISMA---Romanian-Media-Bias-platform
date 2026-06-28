@@ -16,9 +16,6 @@ _NER_STOPWORDS: set[str] = {
     "ele",
     "noi",
     "lor",
-    "lui",
-    "său",
-    "sa",
     "sine",
     "care",
     "cine",
@@ -33,7 +30,6 @@ _NER_STOPWORDS: set[str] = {
     "femeia",
     "copiii",
     "persoanele",
-
     "victima",
     "victimele",
     "suspectul",
@@ -72,12 +68,12 @@ _NER_STOPWORDS: set[str] = {
     "foto",
     "copyright",
     "toate drepturile rezervate",
-    "invitație",
-    "invitatie",
-    "astrele",
-    "horoscop",
-    "vremea",
-    "meteo",
+
+    "fanatik.ro",
+    "digi24.ro",
+    "hotnews.ro",
+    "antena3.ro",
+    "mediafax.ro",
 }
 
 
@@ -85,17 +81,16 @@ def is_ner_stopword(entity_text: str, entity_label: str) -> bool:
     """
     Returns True if the entity should be filtered out as a false positive.
 
-    Matching is case-insensitive on the full entity text.
-    Single-word and multi-word stopwords are both handled.
-
-    Does NOT filter wire services — that is handled in graph_builder.py
-    so the filter can be changed without re-running NER.
+    Checks:
+    1. Exact match against _NER_STOPWORDS (case-insensitive)
+    2. Domain name pattern (.ro, .com, .net suffixes)
     """
     normalized = entity_text.strip().lower()
 
     if normalized in _NER_STOPWORDS:
         return True
-    if '.ro' in normalized or '.com' in normalized or '.net' in normalized:
+
+    if any(normalized.endswith(tld) for tld in ('.ro', '.com', '.net', '.org', '.eu')):
         return True
 
     return False

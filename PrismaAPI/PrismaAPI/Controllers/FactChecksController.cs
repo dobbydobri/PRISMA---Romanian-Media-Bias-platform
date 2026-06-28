@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc;
 using PrismaAPI.DTOs;
 using PrismaAPI.DTOs.FactCheck;
@@ -10,10 +11,10 @@ namespace PrismaAPI.Controllers;
 [Produces("application/json")]
 public class FactChecksController : ControllerBase
 {
-    private readonly FactCheckService _factCheckService;
+    private readonly IFactCheckService _factCheckService;
     private readonly ILogger<FactChecksController> _logger;
 
-    public FactChecksController(FactCheckService factCheckService, ILogger<FactChecksController> logger)
+    public FactChecksController(IFactCheckService factCheckService, ILogger<FactChecksController> logger)
     {
         _factCheckService = factCheckService;
         _logger = logger;
@@ -21,9 +22,10 @@ public class FactChecksController : ControllerBase
 
     [HttpGet]
     [ProducesResponseType(typeof(PaginatedResultDto<FactCheckListItemDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<PaginatedResultDto<FactCheckListItemDto>>> GetAll(
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 20,
+        [FromQuery][Range(1, int.MaxValue)] int page = 1,
+        [FromQuery][Range(1, 100)] int pageSize = 20,
         [FromQuery] string? verdict = null,
         CancellationToken ct = default)
     {
@@ -31,8 +33,6 @@ public class FactChecksController : ControllerBase
             "GET /api/factchecks — verdict={Verdict}, page={Page}, pageSize={PageSize}",
             verdict, page, pageSize);
 
-        if (page < 1) page = 1;
-        if (pageSize is < 1 or > 100) pageSize = 20;
         var result = await _factCheckService.GetListAsync(page, pageSize, verdict, ct);
         return Ok(result);
     }
@@ -51,10 +51,11 @@ public class FactChecksController : ControllerBase
 
     [HttpGet("proximity")]
     [ProducesResponseType(typeof(List<FactCheckProximityDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<List<FactCheckProximityDto>>> GetProximity(
         [FromQuery] long articleId,
-        [FromQuery] double threshold = 0.7,
-        [FromQuery] int limit = 10)
+        [FromQuery][Range(0.0, 1.0)] double threshold = 0.7,
+        [FromQuery][Range(1, 100)] int limit = 10)
     {
         _logger.LogInformation(
             "GET /api/factchecks/proximity — articleId={ArticleId}, threshold={Threshold}, limit={Limit}",

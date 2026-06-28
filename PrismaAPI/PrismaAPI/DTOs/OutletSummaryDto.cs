@@ -12,8 +12,6 @@ public class OutletSummaryDto
 
     public int TotalArticles { get; set; }
 
-    public int PoliticalArticles { get; set; }
-
     public double? AvgCoalition { get; set; }
 
     public double? AvgEuAxis { get; set; }

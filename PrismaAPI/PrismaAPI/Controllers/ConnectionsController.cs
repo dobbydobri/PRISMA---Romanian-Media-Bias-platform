@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc;
 using PrismaAPI.DTOs;
 using PrismaAPI.Services;
@@ -9,21 +10,19 @@ namespace PrismaAPI.Controllers;
 [Produces("application/json")]
 public class ConnectionsController : ControllerBase
 {
-    private readonly ConnectionsService _connectionsService;
-    private readonly ConnectionsPathService _pathService;
+    private readonly IConnectionsService _connectionsService;
+    private readonly IConnectionsPathService _pathService;
     private readonly ILogger<ConnectionsController> _logger;
 
     public ConnectionsController(
-        ConnectionsService connectionsService,
-        ConnectionsPathService pathService,
+        IConnectionsService connectionsService,
+        IConnectionsPathService pathService,
         ILogger<ConnectionsController> logger)
     {
         _connectionsService = connectionsService;
         _pathService = pathService;
         _logger = logger;
     }
-
-    // ── Existing endpoints (unchanged) ────────────────────────────────────────
 
     [HttpGet("entities/{name}")]
     [ProducesResponseType(typeof(List<EntityConnectionDto>), StatusCodes.Status200OK)]
@@ -43,13 +42,12 @@ public class ConnectionsController : ControllerBase
         return Ok(articles);
     }
 
-    // ── New endpoints ─────────────────────────────────────────────────────────
-
     [HttpGet("autocomplete")]
     [ProducesResponseType(typeof(List<EntitySuggestionDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<List<EntitySuggestionDto>>> Autocomplete(
         [FromQuery] string q,
-        [FromQuery] int limit = 20)
+        [FromQuery][Range(1, 100)] int limit = 20)
     {
         if (string.IsNullOrWhiteSpace(q) || q.Length < 2)
             return Ok(new List<EntitySuggestionDto>());
@@ -61,8 +59,9 @@ public class ConnectionsController : ControllerBase
 
     [HttpGet("path")]
     [ProducesResponseType(typeof(EntityPathResponseDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
     public async Task<ActionResult<EntityPathResponseDto>> FindPath(
         [FromQuery] string from,
         [FromQuery] string to)
@@ -75,13 +74,22 @@ public class ConnectionsController : ControllerBase
 
         _logger.LogInformation("GET /api/connections/path?from={From}&to={To}", from, to);
 
-        var result = await _pathService.FindPathAsync(from, to);
-        if (result is null)
+        try
         {
-            _logger.LogWarning("No connection found between {From} and {To}", from, to);
-            return NotFound();
-        }
+            var result = await _pathService.FindPathAsync(from, to);
+            if (result is null)
+            {
+                _logger.LogWarning("No connection found between {From} and {To}", from, to);
+                return NotFound();
+            }
 
-        return Ok(result);
+            return Ok(result);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "Graph service unreachable for path {From}→{To}", from, to);
+            return StatusCode(StatusCodes.Status502BadGateway,
+                new { error = "Graph service unavailable" });
+        }
     }
 }
